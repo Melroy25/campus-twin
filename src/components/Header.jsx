@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { MdMenu, MdNotifications, MdDarkMode, MdLightMode } from 'react-icons/md';
 import { useAuth } from '../context/AuthContext';
 import { listenNotifications, markNotificationRead } from '../firebase/firestore';
-import logoImage from '../assets/hero.png';
+import logoImage from '../assets/about-section-college.jpg';
 
 export default function Header({ onMenuClick, pageTitle }) {
   const { userProfile, currentUser } = useAuth();
@@ -67,7 +67,7 @@ export default function Header({ onMenuClick, pageTitle }) {
           <MdMenu />
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <img src={logoImage} alt="Logo" style={{ width: 28, height: 28, objectFit: 'contain' }} />
+          <img src={logoImage} alt="Logo" style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: '4px' }} />
           <span className="header-title">{pageTitle || 'Campus Twin'}</span>
         </div>
       </div>
