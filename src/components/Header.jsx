@@ -1,13 +1,35 @@
 import { useState, useEffect, useRef } from 'react';
-import { MdMenu, MdNotifications } from 'react-icons/md';
+import { MdMenu, MdNotifications, MdDarkMode, MdLightMode } from 'react-icons/md';
 import { useAuth } from '../context/AuthContext';
 import { listenNotifications, markNotificationRead } from '../firebase/firestore';
+import logoImage from '../assets/hero.png';
 
 export default function Header({ onMenuClick, pageTitle }) {
   const { userProfile, currentUser } = useAuth();
   const [showNotif, setShowNotif] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [isDark, setIsDark] = useState(false);
   const notifRef = useRef(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('theme');
+    if (saved === 'dark') {
+      document.body.classList.add('dark-theme');
+      setIsDark(true);
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    if (isDark) {
+      document.body.classList.remove('dark-theme');
+      localStorage.setItem('theme', 'light');
+      setIsDark(false);
+    } else {
+      document.body.classList.add('dark-theme');
+      localStorage.setItem('theme', 'dark');
+      setIsDark(true);
+    }
+  };
 
   useEffect(() => {
     if (!currentUser?.uid) return;
@@ -44,9 +66,17 @@ export default function Header({ onMenuClick, pageTitle }) {
         <button className="hamburger" onClick={onMenuClick} aria-label="Toggle menu">
           <MdMenu />
         </button>
-        <span className="header-title">{pageTitle || 'Campus Twin'}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <img src={logoImage} alt="Logo" style={{ width: 28, height: 28, objectFit: 'contain' }} />
+          <span className="header-title">{pageTitle || 'Campus Twin'}</span>
+        </div>
       </div>
       <div className="header-right">
+        {/* Theme Toggle */}
+        <button className="notif-btn" onClick={toggleTheme} aria-label="Toggle dark mode" style={{ marginRight: 8 }}>
+          {isDark ? <MdLightMode /> : <MdDarkMode />}
+        </button>
+
         {/* Notification Bell */}
         <div ref={notifRef} style={{ position: 'relative' }}>
           <button
