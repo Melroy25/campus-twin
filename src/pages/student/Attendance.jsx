@@ -120,7 +120,7 @@ export default function StudentAttendance() {
               borderRadius: '50%',
               border: '3px solid white',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              overflow: 'hidden', background: '#e0e0e0', color: '#666'
+              overflow: 'hidden', background: 'rgba(255,255,255,0.2)', color: 'white'
             }}>
               <MdPerson style={{ fontSize: '4rem' }} />
             </div>
@@ -135,12 +135,12 @@ export default function StudentAttendance() {
             </div>
           </div>
 
-          <div style={{ fontSize: '0.8rem', color: '#666', textAlign: 'right', marginBottom: 20 }}>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'right', marginBottom: 20 }}>
             Last Updated On: {new Date().toLocaleDateString('en-GB')}
           </div>
 
           {/* Subject Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid #ddd', marginBottom: 20, overflowX: 'auto', paddingBottom: 5 }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20, overflowX: 'auto', paddingBottom: 5 }}>
             {displaySubjects.map(sub => (
               <button
                 key={sub}
@@ -150,8 +150,8 @@ export default function StudentAttendance() {
                   border: 'none',
                   padding: '10px 15px',
                   fontWeight: selectedSubject === sub ? 600 : 400,
-                  color: selectedSubject === sub ? '#000' : '#888',
-                  borderBottom: selectedSubject === sub ? '2px solid #000' : 'none',
+                  color: selectedSubject === sub ? 'var(--primary)' : 'var(--text-muted)',
+                  borderBottom: selectedSubject === sub ? '2px solid var(--primary)' : 'none',
                   cursor: 'pointer',
                   fontSize: '0.9rem',
                   whiteSpace: 'nowrap'
@@ -165,36 +165,36 @@ export default function StudentAttendance() {
           {/* Teacher and Status Cards */}
           <div className="grid-2 mb-24" style={{ gap: 20 }}>
             {/* Teacher Details */}
-            <div style={{ border: '1px solid #e0e0e0', padding: 20, display: 'flex', alignItems: 'center', gap: 15, background: 'white' }}>
-              <div style={{ width: 50, height: 50, borderRadius: '50%', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', color: '#999', textAlign: 'center', border: '1px solid #ddd' }}>
+            <div style={{ border: '1px solid var(--border)', padding: 20, display: 'flex', alignItems: 'center', gap: 15, background: 'var(--surface)', borderRadius: 'var(--radius)' }}>
+              <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', border: '1px solid var(--border)' }}>
                 PICTURE COMING
               </div>
               <div>
-                <h4 style={{ margin: '0 0 5px 0', fontSize: '1.1rem', color: '#333' }}>Sheen Rose</h4>
-                <p style={{ margin: 0, fontSize: '0.8rem', color: '#666' }}>{selectedSubject} - UNIVERSAL HUMAN VALUES-II</p>
+                <h4 style={{ margin: '0 0 5px 0', fontSize: '1.1rem', color: 'var(--text-primary)' }}>Sheen Rose</h4>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{selectedSubject} - UNIVERSAL HUMAN VALUES-II</p>
               </div>
             </div>
 
             {/* Attendance Status */}
-            <div style={{ border: '1px solid #e0e0e0', padding: 20, display: 'flex', alignItems: 'center', gap: 15, background: 'white' }}>
-              <span style={{ fontSize: '1rem', color: '#555' }}>Attendance Status</span>
-              <span style={{ background: '#28a745', color: 'white', padding: '2px 8px', fontSize: '0.8rem', fontWeight: 600 }}>PRESENT [{presentCount}]</span>
-              <span style={{ background: '#dc3545', color: 'white', padding: '2px 8px', fontSize: '0.8rem', fontWeight: 600 }}>ABSENT [{absentCount}]</span>
-              <span style={{ background: '#6c757d', color: 'white', padding: '2px 8px', fontSize: '0.8rem', fontWeight: 600 }}>STILL TO GO [{stillToGo}]</span>
+            <div style={{ border: '1px solid var(--border)', padding: 20, display: 'flex', alignItems: 'center', gap: 15, background: 'var(--surface)', borderRadius: 'var(--radius)' }}>
+              <span style={{ fontSize: '1rem', color: 'var(--text-secondary)' }}>Attendance Status</span>
+              <span style={{ background: 'var(--success)', color: 'white', padding: '2px 8px', fontSize: '0.8rem', fontWeight: 600, borderRadius: '4px' }}>PRESENT [{presentCount}]</span>
+              <span style={{ background: 'var(--danger)', color: 'white', padding: '2px 8px', fontSize: '0.8rem', fontWeight: 600, borderRadius: '4px' }}>ABSENT [{absentCount}]</span>
+              <span style={{ background: 'var(--secondary)', color: 'white', padding: '2px 8px', fontSize: '0.8rem', fontWeight: 600, borderRadius: '4px' }}>STILL TO GO [{stillToGo}]</span>
             </div>
           </div>
 
           {/* Tables Row */}
           <div className="grid-2" style={{ gap: 20, alignItems: 'start' }}>
             {/* Present Table */}
-            <div style={{ border: '1px solid #e0e0e0', padding: 20, background: 'white', overflowX: 'auto' }}>
+            <div style={{ border: '1px solid var(--border)', padding: 20, background: 'var(--surface)', overflowX: 'auto', borderRadius: 'var(--radius)' }}>
               <div style={{ marginBottom: 15 }}>
-                <span style={{ fontSize: '1rem', color: '#333' }}>Present </span>
-                <span style={{ background: '#28a745', color: 'white', padding: '2px 8px', fontSize: '0.8rem', fontWeight: 600 }}>CLASSES</span>
+                <span style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>Present </span>
+                <span style={{ background: 'var(--success)', color: 'white', padding: '2px 8px', fontSize: '0.8rem', fontWeight: 600, borderRadius: '4px' }}>CLASSES</span>
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                 <thead>
-                  <tr style={{ color: '#555', textAlign: 'left', borderBottom: '1px solid #eee' }}>
+                  <tr style={{ color: 'var(--text-secondary)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
                     <th style={{ padding: '10px 0' }}>SL NO</th>
                     <th>DATE</th>
                     <th>TIME</th>
@@ -203,27 +203,27 @@ export default function StudentAttendance() {
                 </thead>
                 <tbody>
                   {presentList.map((item, i) => (
-                    <tr key={item.id} style={{ borderBottom: '1px solid #f9f9f9', color: '#666' }}>
+                    <tr key={item.id} style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-primary)' }}>
                       <td style={{ padding: '10px 0' }}>{i + 1}</td>
                       <td>{item.date || '01/03/2026'}</td>
                       <td>{item.time || '09:00'}</td>
-                      <td style={{ fontWeight: 600 }}>{item.status.toUpperCase()}</td>
+                      <td style={{ fontWeight: 600, color: 'var(--success)' }}>{item.status.toUpperCase()}</td>
                     </tr>
                   ))}
-                  {presentList.length === 0 && <tr><td colSpan={4} style={{ padding: 10, textAlign: 'center', color: '#999' }}>No classes recorded</td></tr>}
+                  {presentList.length === 0 && <tr><td colSpan={4} style={{ padding: 10, textAlign: 'center', color: 'var(--text-muted)' }}>No classes recorded</td></tr>}
                 </tbody>
               </table>
             </div>
 
             {/* Absent Table */}
-            <div style={{ border: '1px solid #e0e0e0', padding: 20, background: 'white', overflowX: 'auto' }}>
+            <div style={{ border: '1px solid var(--border)', padding: 20, background: 'var(--surface)', overflowX: 'auto', borderRadius: 'var(--radius)' }}>
               <div style={{ marginBottom: 15 }}>
-                <span style={{ fontSize: '1rem', color: '#333' }}>Absent List </span>
-                <span style={{ background: '#dc3545', color: 'white', padding: '2px 8px', fontSize: '0.8rem', fontWeight: 600 }}>CLASSES</span>
+                <span style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>Absent List </span>
+                <span style={{ background: 'var(--danger)', color: 'white', padding: '2px 8px', fontSize: '0.8rem', fontWeight: 600, borderRadius: '4px' }}>CLASSES</span>
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                 <thead>
-                  <tr style={{ color: '#555', textAlign: 'left', borderBottom: '1px solid #eee' }}>
+                  <tr style={{ color: 'var(--text-secondary)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
                     <th style={{ padding: '10px 0' }}>SL NO</th>
                     <th>DATE</th>
                     <th>TIME</th>
@@ -232,14 +232,14 @@ export default function StudentAttendance() {
                 </thead>
                 <tbody>
                   {absentList.map((item, i) => (
-                    <tr key={item.id} style={{ borderBottom: '1px solid #f9f9f9', color: '#666' }}>
+                    <tr key={item.id} style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-primary)' }}>
                       <td style={{ padding: '10px 0' }}>{i + 1}</td>
                       <td>{item.date || '15/03/2026'}</td>
                       <td>{item.time || '11:00'}</td>
-                      <td style={{ fontWeight: 600 }}>{item.status.toUpperCase()}</td>
+                      <td style={{ fontWeight: 600, color: 'var(--danger)' }}>{item.status.toUpperCase()}</td>
                     </tr>
                   ))}
-                  {absentList.length === 0 && <tr><td colSpan={4} style={{ padding: 10, textAlign: 'center', color: '#999' }}>No absent classes</td></tr>}
+                  {absentList.length === 0 && <tr><td colSpan={4} style={{ padding: 10, textAlign: 'center', color: 'var(--text-muted)' }}>No absent classes</td></tr>}
                 </tbody>
               </table>
             </div>
