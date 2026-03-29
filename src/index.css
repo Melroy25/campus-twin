@@ -667,7 +667,7 @@ tbody tr:hover { background: var(--surface-2); }
 .login-page {
   min-height: 100vh;
   display: flex;
-  background: linear-gradient(135deg, #f0f4ff 0%, #e8edf8 100%);
+  background: var(--bg);
 }
 
 .login-left {
@@ -689,7 +689,8 @@ tbody tr:hover { background: var(--surface-2); }
 }
 
 .login-card {
-  background: white;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   padding: 40px;
   width: 100%;

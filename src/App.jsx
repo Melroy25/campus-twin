@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { useEffect } from 'react';
 import PrivateRoute from './components/PrivateRoute';
 
 // Pages
@@ -39,6 +40,11 @@ function RoleRedirect() {
 }
 
 function App() {
+  useEffect(() => {
+    const saved = localStorage.getItem('theme');
+    if (saved === 'dark') document.body.classList.add('dark-theme');
+  }, []);
+
   return (
     <AuthProvider>
       <BrowserRouter>
