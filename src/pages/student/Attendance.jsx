@@ -187,7 +187,7 @@ export default function StudentAttendance() {
           {/* Tables Row */}
           <div className="grid-2" style={{ gap: 20, alignItems: 'start' }}>
             {/* Present Table */}
-            <div style={{ border: '1px solid #e0e0e0', padding: 20, background: 'white' }}>
+            <div style={{ border: '1px solid #e0e0e0', padding: 20, background: 'white', overflowX: 'auto' }}>
               <div style={{ marginBottom: 15 }}>
                 <span style={{ fontSize: '1rem', color: '#333' }}>Present </span>
                 <span style={{ background: '#28a745', color: 'white', padding: '2px 8px', fontSize: '0.8rem', fontWeight: 600 }}>CLASSES</span>
@@ -216,7 +216,7 @@ export default function StudentAttendance() {
             </div>
 
             {/* Absent Table */}
-            <div style={{ border: '1px solid #e0e0e0', padding: 20, background: 'white' }}>
+            <div style={{ border: '1px solid #e0e0e0', padding: 20, background: 'white', overflowX: 'auto' }}>
               <div style={{ marginBottom: 15 }}>
                 <span style={{ fontSize: '1rem', color: '#333' }}>Absent List </span>
                 <span style={{ background: '#dc3545', color: 'white', padding: '2px 8px', fontSize: '0.8rem', fontWeight: 600 }}>CLASSES</span>

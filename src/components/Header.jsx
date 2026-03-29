@@ -87,17 +87,6 @@ export default function Header({ onMenuClick, pageTitle }) {
             </div>
           )}
         </div>
-
-        {/* User Avatar */}
-        <div style={{
-          width: 36, height: 36,
-          background: 'var(--primary-light)',
-          borderRadius: '50%',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'var(--primary)', fontWeight: 700, fontSize: '0.8rem',
-        }}>
-          {userProfile?.name?.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '?'}
-        </div>
       </div>
     </header>
   );

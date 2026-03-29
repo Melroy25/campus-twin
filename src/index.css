@@ -56,13 +56,15 @@ body {
   line-height: 1.6;
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 a { text-decoration: none; color: inherit; }
 ul { list-style: none; }
 img { max-width: 100%; display: block; }
 button { cursor: pointer; font-family: inherit; }
-input, textarea, select { font-family: inherit; }
+input, textarea, select { font-family: inherit; user-select: auto; -webkit-user-select: auto; }
 
 /* ===== Scrollbar ===== */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -368,6 +370,12 @@ tbody tr:hover { background: var(--surface-2); }
 .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+@media (max-width: 768px) {
+  .grid-2, .grid-3, .grid-4 {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* ===== Flex helpers ===== */
 .flex   { display: flex; }
