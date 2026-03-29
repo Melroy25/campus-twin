@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-hot-toast';
 import { MdLock, MdBadge, MdVisibility, MdVisibilityOff } from 'react-icons/md';
+import bgImage from '../assets/about-section-college.jpg';
+import logoImage from '../assets/hero.png';
 
 export default function Login() {
   const { login, userProfile } = useAuth();
@@ -41,13 +43,15 @@ export default function Login() {
     <div className="login-page">
       {/* Left panel (hidden on mobile) */}
       <div className="login-left" style={{
-        background: 'linear-gradient(135deg, #4f6ef7, #3a56d4)',
+        backgroundImage: `linear-gradient(rgba(58, 86, 212, 0.75), rgba(79, 110, 247, 0.9)), url(${bgImage})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
         flexDirection: 'column',
         gap: 24,
         color: 'white',
         textAlign: 'center',
       }}>
-        <div style={{ fontSize: '4rem' }}>🏫</div>
+        <img src={logoImage} alt="SJEC Logo" style={{ width: 130, height: 130, objectFit: 'contain' }} />
         <h2 style={{ color: 'white', fontSize: '1.8rem' }}>Campus Twin</h2>
         <p style={{ color: 'rgba(255,255,255,0.8)', maxWidth: 300, lineHeight: 1.7 }}>
           Your college's digital twin — timetables, attendance, marks, and more in one place.

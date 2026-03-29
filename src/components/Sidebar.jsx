@@ -6,6 +6,7 @@ import {
   MdGroup, MdPeople, MdSettings, MdEventNote,
   MdLogout, MdHowToReg, MdThumbUp, MdClose
 } from 'react-icons/md';
+import logoImage from '../assets/hero.png';
 
 const NAV_ITEMS = {
   student: [
@@ -68,7 +69,7 @@ export default function Sidebar({ isOpen, onClose }) {
       <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
         {/* Logo */}
         <div className="sidebar-logo">
-          <div className="sidebar-logo-icon">CT</div>
+          <img src={logoImage} alt="Campus Twin Logo" style={{ width: 44, height: 44, objectFit: 'contain' }} />
           <div>
             <div className="sidebar-logo-text">Campus Twin</div>
             <div className="sidebar-logo-sub">Digital College System</div>
