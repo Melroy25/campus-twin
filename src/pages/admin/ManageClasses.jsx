@@ -43,7 +43,7 @@ export default function AdminManageClasses() {
     try {
       await addClass({
         branch: form.branch,
-        year: Number(form.year),
+        year: String(form.year),
         section: form.section.toUpperCase(),
         mentor_id: form.mentor_id || '',
         label: `${form.branch} ${form.year} - Sec ${form.section.toUpperCase()}`,
@@ -87,9 +87,8 @@ export default function AdminManageClasses() {
             <div className="form-group">
               <label className="form-label">Year (Batch) *</label>
               <input
-                type="number" className="form-control"
-                placeholder="e.g. 2024"
-                min={2000} max={2100}
+                type="text" className="form-control"
+                placeholder="e.g. 2024 or 2nd Year"
                 value={form.year}
                 onChange={(e) => setForm({ ...form, year: e.target.value })}
               />
