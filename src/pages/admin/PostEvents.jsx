@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
-import { listenEvents, addDocument, deleteDocument } from '../../firebase/firestore';
-import { uploadEventImage } from '../../firebase/storage';
+import { listenEvents, addDocument, deleteDocument } from '../../appwrite/database';
+import { uploadEventImage } from '../../appwrite/storage';
 import { toast } from 'react-hot-toast';
 import { MdAdd, MdDelete, MdUpload, MdEvent } from 'react-icons/md';
 import { useAuth } from '../../context/AuthContext';

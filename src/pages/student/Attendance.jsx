@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
-import { getAttendanceByStudent, getLeaveRequestsByStudent, addDocument } from '../../firebase/firestore';
-import { uploadLeaveImage } from '../../firebase/storage';
+import { getAttendanceByStudent, getLeaveRequestsByStudent, addDocument } from '../../appwrite/database';
+import { uploadLeaveImage } from '../../appwrite/storage';
 import { toast } from 'react-hot-toast';
 import { MdClose, MdUpload, MdAdd, MdPerson } from 'react-icons/md';
 
@@ -11,62 +11,18 @@ export default function StudentAttendance() {
   const [records, setRecords] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedSubject, setSelectedSubject] = useState('');
+  const [filter, setFilter] = useState('all'); // 'all' | 'present' | 'absent'
 
-  // Modals
-  const [showModal, setShowModal] = useState(false);
-  const [reason, setReason] = useState('');
-  const [leaveDate, setLeaveDate] = useState('');
-  const [file, setFile] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
+  const filteredRecords = activeRecords.filter(r => {
+    if (filter === 'all') return true;
+    return r.status === filter;
+  }).sort((a,b) => new Date(b.date || 0) - new Date(a.date || 0));
 
-  const fetchData = async () => {
-    if (!currentUser?.uid) return;
-    const res = await getAttendanceByStudent(currentUser.uid);
-    setRecords(res);
-    
-    // Automatically select the first subject
-    const subjects = [...new Set(res.map(r => r.subject))];
-    if (subjects.length > 0 && !selectedSubject) {
-      setSelectedSubject(subjects[0]);
-    }
-
-    const lr = await getLeaveRequestsByStudent(currentUser.uid);
-    setLeaveRequests(lr);
-    setLoading(false);
-  };
-
-  useEffect(() => { fetchData(); }, [currentUser]);
-
-  const subjects = useMemo(() => {
-    return [...new Set(records.map(r => r.subject))];
-  }, [records]);
-
-  // If no real records, lets create some mock subjects to match the UI screenshot
-  const displaySubjects = subjects.length > 0 ? subjects : ['22CSE46L', '22ITC49B', '22CSE41', '22CSE42', '22CSE43', '22CSE44', '22CTE48', '22UHV47', '22CSE451'];
-  
-  // Set default if empty
-  useEffect(() => {
-    if (!selectedSubject && displaySubjects.length > 0) {
-      setSelectedSubject(displaySubjects[displaySubjects.length > 2 ? 7 : 0]); // Defaulting to 22UHV47 if available like screenshot
-    }
-  }, [displaySubjects, selectedSubject]);
-
-  const activeRecords = records.filter(r => r.subject === selectedSubject);
-  
-  // Mocking lists if empty to demonstrate UI
-  const presentList = activeRecords.length > 0 
-    ? activeRecords.filter(r => r.status === 'present')
-    : [{ id: 1, date: '01/03/2026', time: '09:00', status: 'PRESENT' }, { id: 2, date: '02/03/2026', time: '10:00', status: 'PRESENT' }];
-    
-  const absentList = activeRecords.length > 0 
-    ? activeRecords.filter(r => r.status === 'absent')
-    : [{ id: 3, date: '15/03/2026', time: '11:00', status: 'ABSENT' }];
-
-  const presentCount = presentList.length;
-  const absentCount = absentList.length;
+  const presentCount = records.filter(r => r.subject === selectedSubject && r.status === 'present').length;
+  const absentCount = records.filter(r => r.subject === selectedSubject && r.status === 'absent').length;
   const totalConducted = presentCount + absentCount;
-  const stillToGo = Math.max(0, 40 - totalConducted); // assuming 40 classes total
+  const percentage = totalConducted > 0 ? Math.round((presentCount / totalConducted) * 100) : 0;
+  const stillToGo = Math.max(0, 40 - totalConducted);
 
   const submitLeave = async () => {
     if (!reason || !leaveDate) return toast.error('Please fill all required fields');
@@ -94,67 +50,85 @@ export default function StudentAttendance() {
       {loading ? (
         <div className="loader-container" style={{ minHeight: 200 }}><div className="loader" /></div>
       ) : (
-        <div className="attendance-contineo-wrapper">
+        <div className="attendance-mobile-container" style={{ maxWidth: 800, margin: '0 auto' }}>
           
-          {/* Contineo-style Header */}
+          {/* Responsive SJEC Header */}
           <div style={{
-            background: '#0a64b5', // SJEC blue
-            borderRadius: 'var(--radius)',
-            padding: '20px 30px',
+            background: 'linear-gradient(135deg, #0a64b5 0%, #1781e3 100%)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '24px',
             color: 'white',
             display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '20px',
-            flexWrap: 'wrap',
-            gap: 20
+            flexDirection: 'column',
+            gap: 20,
+            marginBottom: '24px',
+            boxShadow: 'var(--shadow-md)'
           }}>
-            <div>
-              <h2 style={{ fontSize: '1.25rem', letterSpacing: '1px', textTransform: 'uppercase', margin: 0 }}>
-                {userProfile?.name || 'MELROY LUVIS ALMEIDA'}
-              </h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                 <p style={{ margin: 0, fontSize: '0.75rem', opacity: 0.8, textTransform: 'uppercase', letterSpacing: '1px' }}>Student Profile</p>
+                 <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '4px 0', color: 'white' }}>
+                  {userProfile?.name?.toUpperCase() || 'STUDENT NAME'}
+                </h2>
+                <div style={{ fontSize: '0.9rem', fontWeight: 500, color: 'rgba(255,255,255,0.9)' }}>
+                  {userProfile?.usn || 'USN'}
+                </div>
+              </div>
+              <div style={{
+                width: 60, height: 60, 
+                borderRadius: '16px',
+                background: 'rgba(255,255,255,0.2)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '2rem', color: 'white'
+              }}>
+                <MdPerson />
+              </div>
             </div>
-            
-            <div style={{
-              width: 90, height: 90, 
-              borderRadius: '50%',
-              border: '3px solid white',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              overflow: 'hidden', background: 'rgba(255,255,255,0.2)', color: 'white'
+
+            <div style={{ 
+              display: 'flex', 
+              gap: 20, 
+              paddingTop: 16, 
+              borderTop: '1px solid rgba(255,255,255,0.1)',
+              fontSize: '0.85rem'
             }}>
-              <MdPerson style={{ fontSize: '4rem' }} />
-            </div>
-
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '1.2rem', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
-                {userProfile?.usn || '4S024CS128'}
+              <div>
+                <p style={{ opacity: 0.7, margin: 0 }}>Class</p>
+                <p style={{ fontWeight: 600, margin: 0 }}>{userProfile?.class_id || 'N/A'}</p>
               </div>
-              <div style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)', marginTop: 4 }}>
-                B.E-CS, SEM 04, SEC B
+              <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                <p style={{ opacity: 0.7, margin: 0 }}>Average</p>
+                <p style={{ fontWeight: 700, fontSize: '1.1rem', margin: 0 }}>{percentage}%</p>
               </div>
             </div>
           </div>
 
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'right', marginBottom: 20 }}>
-            Last Updated On: {new Date().toLocaleDateString('en-GB')}
-          </div>
-
-          {/* Subject Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20, overflowX: 'auto', paddingBottom: 5 }}>
+          {/* Subject Selector */}
+          <div style={{ 
+            display: 'flex', 
+            gap: 10, 
+            overflowX: 'auto', 
+            paddingBottom: 12, 
+            marginBottom: 24,
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none'
+          }}>
             {displaySubjects.map(sub => (
               <button
                 key={sub}
                 onClick={() => setSelectedSubject(sub)}
                 style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: '10px 15px',
-                  fontWeight: selectedSubject === sub ? 600 : 400,
-                  color: selectedSubject === sub ? 'var(--primary)' : 'var(--text-muted)',
-                  borderBottom: selectedSubject === sub ? '2px solid var(--primary)' : 'none',
+                  background: selectedSubject === sub ? 'var(--primary)' : 'var(--surface)',
+                  border: `1px solid ${selectedSubject === sub ? 'var(--primary)' : 'var(--border)'}`,
+                  padding: '8px 16px',
+                  borderRadius: '20px',
+                  fontWeight: 600,
+                  color: selectedSubject === sub ? 'white' : 'var(--text-secondary)',
                   cursor: 'pointer',
-                  fontSize: '0.9rem',
-                  whiteSpace: 'nowrap'
+                  fontSize: '0.85rem',
+                  whiteSpace: 'nowrap',
+                  boxShadow: selectedSubject === sub ? 'var(--shadow-sm)' : 'none',
+                  transition: 'all 0.2s ease'
                 }}
               >
                 {sub}
@@ -162,98 +136,108 @@ export default function StudentAttendance() {
             ))}
           </div>
 
-          {/* Teacher and Status Cards */}
-          <div className="grid-2 mb-24" style={{ gap: 20 }}>
-            {/* Teacher Details */}
-            <div style={{ border: '1px solid var(--border)', padding: 20, display: 'flex', alignItems: 'center', gap: 15, background: 'var(--surface)', borderRadius: 'var(--radius)' }}>
-              <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', border: '1px solid var(--border)' }}>
-                PICTURE COMING
-              </div>
-              <div>
-                <h4 style={{ margin: '0 0 5px 0', fontSize: '1.1rem', color: 'var(--text-primary)' }}>Sheen Rose</h4>
-                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{selectedSubject} - UNIVERSAL HUMAN VALUES-II</p>
-              </div>
+          {/* Summary Stats Cards */}
+          <div className="grid-3 mb-24" style={{ gap: 12 }}>
+            <div className="card" style={{ padding: '12px 16px' }}>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Present</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--success)' }}>{presentCount}</div>
             </div>
-
-            {/* Attendance Status */}
-            <div style={{ border: '1px solid var(--border)', padding: 20, display: 'flex', alignItems: 'center', gap: 15, background: 'var(--surface)', borderRadius: 'var(--radius)' }}>
-              <span style={{ fontSize: '1rem', color: 'var(--text-secondary)' }}>Attendance Status</span>
-              <span style={{ background: 'var(--success)', color: 'white', padding: '2px 8px', fontSize: '0.8rem', fontWeight: 600, borderRadius: '4px' }}>PRESENT [{presentCount}]</span>
-              <span style={{ background: 'var(--danger)', color: 'white', padding: '2px 8px', fontSize: '0.8rem', fontWeight: 600, borderRadius: '4px' }}>ABSENT [{absentCount}]</span>
-              <span style={{ background: 'var(--secondary)', color: 'white', padding: '2px 8px', fontSize: '0.8rem', fontWeight: 600, borderRadius: '4px' }}>STILL TO GO [{stillToGo}]</span>
+            <div className="card" style={{ padding: '12px 16px' }}>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Absent</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--danger)' }}>{absentCount}</div>
+            </div>
+            <div className="card" style={{ padding: '12px 16px' }}>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Remaining</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--secondary)' }}>{stillToGo}</div>
             </div>
           </div>
 
-          {/* Tables Row */}
-          <div className="grid-2" style={{ gap: 20, alignItems: 'start' }}>
-            {/* Present Table */}
-            <div style={{ border: '1px solid var(--border)', padding: 20, background: 'var(--surface)', overflowX: 'auto', borderRadius: 'var(--radius)' }}>
-              <div style={{ marginBottom: 15 }}>
-                <span style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>Present </span>
-                <span style={{ background: 'var(--success)', color: 'white', padding: '2px 8px', fontSize: '0.8rem', fontWeight: 600, borderRadius: '4px' }}>CLASSES</span>
+          {/* Records List Section */}
+          <div className="card mb-24" style={{ padding: 0, overflow: 'hidden' }}>
+            <div className="flex-between" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+              <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Attendance Log</h3>
+              
+              <div style={{ display: 'flex', gap: 6 }}>
+                {['all', 'present', 'absent'].map(f => (
+                  <button 
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      background: filter === f ? 'var(--primary-light)' : 'transparent',
+                      color: filter === f ? 'var(--primary)' : 'var(--text-muted)',
+                      border: 'none',
+                      cursor: 'pointer',
+                      textTransform: 'capitalize'
+                    }}
+                  >
+                    {f}
+                  </button>
+                ))}
               </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                <thead>
-                  <tr style={{ color: 'var(--text-secondary)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                    <th style={{ padding: '10px 0' }}>SL NO</th>
-                    <th>DATE</th>
-                    <th>TIME</th>
-                    <th>STATUS</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {presentList.map((item, i) => (
-                    <tr key={item.id} style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-                      <td style={{ padding: '10px 0' }}>{i + 1}</td>
-                      <td>{item.date || '01/03/2026'}</td>
-                      <td>{item.time || '09:00'}</td>
-                      <td style={{ fontWeight: 600, color: 'var(--success)' }}>{item.status.toUpperCase()}</td>
-                    </tr>
-                  ))}
-                  {presentList.length === 0 && <tr><td colSpan={4} style={{ padding: 10, textAlign: 'center', color: 'var(--text-muted)' }}>No classes recorded</td></tr>}
-                </tbody>
-              </table>
             </div>
 
-            {/* Absent Table */}
-            <div style={{ border: '1px solid var(--border)', padding: 20, background: 'var(--surface)', overflowX: 'auto', borderRadius: 'var(--radius)' }}>
-              <div style={{ marginBottom: 15 }}>
-                <span style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>Absent List </span>
-                <span style={{ background: 'var(--danger)', color: 'white', padding: '2px 8px', fontSize: '0.8rem', fontWeight: 600, borderRadius: '4px' }}>CLASSES</span>
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                <thead>
-                  <tr style={{ color: 'var(--text-secondary)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                    <th style={{ padding: '10px 0' }}>SL NO</th>
-                    <th>DATE</th>
-                    <th>TIME</th>
-                    <th>STATUS</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {absentList.map((item, i) => (
-                    <tr key={item.id} style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-                      <td style={{ padding: '10px 0' }}>{i + 1}</td>
-                      <td>{item.date || '15/03/2026'}</td>
-                      <td>{item.time || '11:00'}</td>
-                      <td style={{ fontWeight: 600, color: 'var(--danger)' }}>{item.status.toUpperCase()}</td>
-                    </tr>
-                  ))}
-                  {absentList.length === 0 && <tr><td colSpan={4} style={{ padding: 10, textAlign: 'center', color: 'var(--text-muted)' }}>No absent classes</td></tr>}
-                </tbody>
-              </table>
+            <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+              {filteredRecords.length === 0 ? (
+                <div className="empty-state" style={{ padding: '40px 20px' }}>
+                   <p>No {filter !== 'all' ? filter : ''} records found for this subject.</p>
+                </div>
+              ) : (
+                filteredRecords.map((item, i) => (
+                  <div key={item.id} style={{ 
+                    padding: '14px 20px', 
+                    borderBottom: '1px solid var(--border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 16
+                  }}>
+                    <div style={{ 
+                      width: 40, height: 40, 
+                      borderRadius: '8px', 
+                      background: item.status === 'present' ? 'var(--success-light)' : 'var(--danger-light)',
+                      color: item.status === 'present' ? 'var(--success)' : 'var(--danger)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '1rem', fontWeight: 700, flexShrink: 0
+                    }}>
+                      {item.status === 'present' ? 'P' : 'A'}
+                    </div>
+                    
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{item.date}</div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{item.time || 'N/A'} • Period {item.period || '-'}</div>
+                    </div>
+
+                    <div style={{ 
+                      textAlign: 'right',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      background: item.status === 'present' ? 'var(--success-light)' : 'var(--danger-light)',
+                      color: item.status === 'present' ? 'var(--success)' : 'var(--danger)',
+                      textTransform: 'uppercase'
+                    }}>
+                      {item.status}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
-          <div style={{ marginTop: 40, borderTop: '1px solid var(--border)', paddingTop: 20}}>
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowModal(true)}>
-              <MdAdd /> Submit Leave Request
+          <div className="flex-center">
+            <button className="btn btn-ghost btn-sm w-full" style={{ padding: '12px' }} onClick={() => setShowModal(true)}>
+              <MdAdd /> Apply for Leave Request
             </button>
           </div>
         </div>
       )}
 
       {/* Leave Request Modal */}
+
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>

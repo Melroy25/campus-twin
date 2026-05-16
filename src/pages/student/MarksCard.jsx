@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
-import { getMarksCardsByStudent } from '../../firebase/firestore';
+import { getMarksCardsByStudent } from '../../appwrite/database';
 import { MdPictureAsPdf, MdDownload, MdOpenInNew } from 'react-icons/md';
 
 export default function StudentMarksCard() {

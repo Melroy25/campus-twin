@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
-import { listenEvents } from '../../firebase/firestore';
+import { listenEvents } from '../../appwrite/database';
 import { MdEvent } from 'react-icons/md';
 
 export default function StudentEvents() {

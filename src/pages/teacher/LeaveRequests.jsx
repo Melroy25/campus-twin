@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
-import { getPendingLeaveRequests, updateDocument, addNotification } from '../../firebase/firestore';
+import { getPendingLeaveRequests, updateDocument, addNotification } from '../../appwrite/database';
 import { toast } from 'react-hot-toast';
 import { MdCheck, MdClose, MdOpenInNew } from 'react-icons/md';
 

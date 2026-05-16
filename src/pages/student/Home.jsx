@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
-import { listenEvents, getAttendanceByStudent, getAttendanceSummary, getAICTEByStudent } from '../../firebase/firestore';
+import { listenEvents, getAttendanceByStudent, getAttendanceSummary, getAICTEByStudent } from '../../appwrite/database';
 import { MdCheckCircle, MdStar, MdEvent, MdPerson } from 'react-icons/md';
 
 export default function StudentHome() {
@@ -121,6 +121,29 @@ export default function StudentHome() {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Quick Actions */}
+        <div style={{ marginTop: 24, display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+          <div className="card" style={{ 
+            background: 'linear-gradient(135deg, #1e212b 0%, #2a2d3a 100%)', 
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 20,
+            cursor: 'pointer',
+            border: 'none'
+          }} onClick={() => window.location.href = '/student/complaints'}>
+            <div style={{ 
+              width: 50, height: 50, borderRadius: '12px', background: 'rgba(255,255,255,0.1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem'
+            }}>🚨</div>
+            <div style={{ flex: 1 }}>
+              <h4 style={{ margin: 0, color: 'white', fontSize: '1rem' }}>Have an Issue?</h4>
+              <p style={{ margin: 0, color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem' }}>Submit an anonymous complaint to Admin</p>
+            </div>
+            <div style={{ fontSize: '1.2rem', opacity: 0.5 }}>→</div>
+          </div>
         </div>
       </div>
     </Layout>

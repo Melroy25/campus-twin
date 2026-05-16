@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { MdMenu, MdNotifications, MdDarkMode, MdLightMode } from 'react-icons/md';
 import { useAuth } from '../context/AuthContext';
-import { listenNotifications, markNotificationRead } from '../firebase/firestore';
+import { listenNotifications, markNotificationRead } from '../appwrite/database';
 import logoImage from '../assets/about-section-college.jpg';
 
 export default function Header({ onMenuClick, pageTitle }) {

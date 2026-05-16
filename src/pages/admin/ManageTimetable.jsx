@@ -3,7 +3,7 @@ import Layout from '../../components/Layout';
 import {
   getTimetableByClass, addDocument, updateDocument, deleteDocument,
   getPendingComments, addChangeLog, addNotification
-} from '../../firebase/firestore';
+} from '../../appwrite/database';
 import { toast } from 'react-hot-toast';
 import { MdAdd, MdEdit, MdDelete, MdCheck, MdClose, MdFlag } from 'react-icons/md';
 

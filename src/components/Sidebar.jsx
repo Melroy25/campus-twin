@@ -4,7 +4,8 @@ import {
   MdDashboard, MdSchedule, MdCheckCircle, MdBarChart,
   MdStar, MdDescription, MdListAlt, MdEvent,
   MdGroup, MdPeople, MdSettings, MdEventNote,
-  MdLogout, MdHowToReg, MdThumbUp, MdClose
+  MdLogout, MdHowToReg, MdThumbUp, MdClose,
+  MdSchool, MdInbox, MdHome, MdPerson
 } from 'react-icons/md';
 import logoImage from '../assets/about-section-college.jpg';
 
@@ -18,21 +19,29 @@ const NAV_ITEMS = {
     { label: 'Marks Card', icon: <MdDescription />, path: '/student/marks-card' },
     { label: 'Course Registration', icon: <MdListAlt />, path: '/student/courses' },
     { label: 'Events', icon: <MdEvent />, path: '/student/events' },
+    { label: 'Complaint Box', icon: <MdInbox />, path: '/student/complaints' },
   ],
   teacher: [
+    { label: 'Home', icon: <MdHome />, path: '/teacher' },
     { label: 'Mark Attendance', icon: <MdHowToReg />, path: '/teacher/attendance' },
     { label: 'Add Marks', icon: <MdBarChart />, path: '/teacher/marks' },
     { label: 'Leave Requests', icon: <MdDescription />, path: '/teacher/leave' },
+    { label: 'Complaint Box', icon: <MdInbox />, path: '/teacher/complaints' },
   ],
   mentor: [
+    { label: 'My Class', icon: <MdHome />, path: '/mentor' },
+    { label: 'My Students', icon: <MdPeople />, path: '/mentor/students' },
     { label: 'AICTE Approvals', icon: <MdThumbUp />, path: '/mentor/aicte' },
+    { label: 'Complaint Box', icon: <MdInbox />, path: '/mentor/complaints' },
   ],
   admin: [
     { label: 'Dashboard', icon: <MdDashboard />, path: '/admin' },
+    { label: 'Manage Classes', icon: <MdSchool />, path: '/admin/classes' },
     { label: 'Manage Users', icon: <MdGroup />, path: '/admin/users' },
     { label: 'Manage Timetable', icon: <MdSchedule />, path: '/admin/timetable' },
     { label: 'Upload Marks Cards', icon: <MdDescription />, path: '/admin/marks-cards' },
     { label: 'Post Events', icon: <MdEventNote />, path: '/admin/events' },
+    { label: 'Complaint Box', icon: <MdInbox />, path: '/admin/complaints' },
   ],
 };
 
@@ -57,6 +66,13 @@ export default function Sidebar({ isOpen, onClose }) {
   const initials = userProfile?.name
     ? userProfile.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
     : '?';
+
+  const roleLabel = {
+    student: 'Student',
+    teacher: 'Teacher',
+    mentor: 'Mentor',
+    admin: 'Admin',
+  }[role] || role;
 
   return (
     <>
@@ -87,7 +103,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
         {/* Nav */}
         <nav className="sidebar-nav">
-          <div className="sidebar-section-label">{role === 'student' ? 'Student' : role === 'admin' ? 'Admin' : role === 'teacher' ? 'Teacher' : 'Mentor'} Menu</div>
+          <div className="sidebar-section-label">{roleLabel} Menu</div>
           {navItems.map((item) => (
             <div
               key={item.path}

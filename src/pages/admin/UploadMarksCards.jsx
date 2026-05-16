@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Layout from '../../components/Layout';
-import { addDocument } from '../../firebase/firestore';
-import { uploadMarksCard } from '../../firebase/storage';
+import { addDocument } from '../../appwrite/database';
+import { uploadMarksCard } from '../../appwrite/storage';
 import { toast } from 'react-hot-toast';
 import { MdUpload, MdPictureAsPdf } from 'react-icons/md';
 

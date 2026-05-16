@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
-import { getAICTEByStudent, addDocument } from '../../firebase/firestore';
-import { uploadAICTEProof } from '../../firebase/storage';
+import { getAICTEByStudent, addDocument } from '../../appwrite/database';
+import { uploadAICTEProof } from '../../appwrite/storage';
 import { toast } from 'react-hot-toast';
 import { MdClose, MdUpload, MdAdd, MdStar } from 'react-icons/md';
 

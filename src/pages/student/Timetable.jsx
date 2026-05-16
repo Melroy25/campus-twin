@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import {
   getTodayTimetable, getTimetableByClass, getCommentsByTimetable,
   addDocument, getPendingComments, updateDocument
-} from '../../firebase/firestore';
+} from '../../appwrite/database';
 import { toast } from 'react-hot-toast';
 import {
   MdSchedule, MdRoom, MdPerson, MdFlag,

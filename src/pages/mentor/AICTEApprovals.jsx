@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
-import { getAICTEByMentor, updateDocument, addNotification } from '../../firebase/firestore';
+import { getAICTEByMentor, updateDocument, addNotification } from '../../appwrite/database';
 import { toast } from 'react-hot-toast';
 import { MdCheck, MdClose, MdOpenInNew, MdStar } from 'react-icons/md';
 
