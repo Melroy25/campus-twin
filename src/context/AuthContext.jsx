@@ -54,9 +54,10 @@ export const AuthProvider = ({ children }) => {
       createdAt: new Date().toISOString(),
     };
     
-    // Remove SQL-only fields before saving to Appwrite NoSQL collection
+    // Remove SQL-only and schema-unsupported fields before saving to Appwrite NoSQL collection
     delete docData.personalEmail;
     delete docData.isHostelite;
+    delete docData.role;
     
     delete docData.class_assignments;
     if (profileData.role === 'teacher' || profileData.role === 'mentor') {
