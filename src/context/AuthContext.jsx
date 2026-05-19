@@ -46,7 +46,11 @@ export const AuthProvider = ({ children }) => {
     const user = await getCurrentUser();
     setCurrentUser(user);
     if (user) {
-      const profile = await getMergedProfile(user);
+      let profile = await getMergedProfile(user);
+      if (!profile) {
+        // Fallback if DB document is missing
+        profile = { uid: user.uid, role, name: user.name || usn };
+      }
       setUserProfile(profile);
     }
     return result;
@@ -128,7 +132,12 @@ export const AuthProvider = ({ children }) => {
         const user = await getCurrentUser();
         setCurrentUser(user);
         if (user) {
-          const profile = await getMergedProfile(user);
+          let profile = await getMergedProfile(user);
+          if (!profile) {
+            // Determine role from email or default to student
+            const role = user.email.includes('admin') ? 'admin' : user.email.includes('teacher') ? 'teacher' : 'student';
+            profile = { uid: user.uid, role, name: user.name || user.email };
+          }
           setUserProfile(profile);
         }
       } catch (err) {
