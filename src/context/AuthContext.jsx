@@ -54,6 +54,10 @@ export const AuthProvider = ({ children }) => {
       createdAt: new Date().toISOString(),
     };
     
+    // Remove SQL-only fields before saving to Appwrite NoSQL collection
+    delete docData.personalEmail;
+    delete docData.isHostelite;
+    
     delete docData.class_assignments;
     if (profileData.role === 'teacher' || profileData.role === 'mentor') {
       docData.class_assignments = profileData.class_assignments || [];
@@ -61,12 +65,16 @@ export const AuthProvider = ({ children }) => {
 
     // Ensure documents get created matching Auth User ID
     await addDocumentWithId(collectionName, uid, docData);
-    await addDocumentWithId('userRoles', uid, {
-      role: profileData.role,
-      usn,
-      name: profileData.name,
-      uid,
-    });
+    
+    try {
+      await addDocumentWithId('userRoles', uid, {
+        role: profileData.role,
+        usn,
+        uid,
+      });
+    } catch (roleErr) {
+      console.warn('Failed to sync to userRoles collection in Appwrite (ignoring):', roleErr.message);
+    }
 
     // Sync to Supabase Postgres (SQL) if role is student
     if (profileData.role === 'student') {
