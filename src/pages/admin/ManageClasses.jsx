@@ -6,7 +6,7 @@ import {
 import { where } from '../../appwrite/database';
 import { toast } from 'react-hot-toast';
 import {
-  MdAdd, MdDelete, MdSchool, MdPeople, MdClose
+  MdAdd, MdDelete, MdSchool, MdPeople, MdClose, MdContentCopy
 } from 'react-icons/md';
 
 const BRANCHES = ['CSE', 'ISE', 'ECE', 'EEE', 'ME', 'CE', 'AIDS', 'AIML'];
@@ -66,6 +66,11 @@ export default function AdminManageClasses() {
   const mentorName = (mentorId) => {
     const t = teachers.find((t) => t.id === mentorId || t.uid === mentorId);
     return t ? t.name : mentorId || '–';
+  };
+
+  const handleCopyId = (id) => {
+    navigator.clipboard.writeText(id);
+    toast.success('Class ID copied!');
   };
 
   return (
@@ -154,11 +159,18 @@ export default function AdminManageClasses() {
                       ID: {cls.id}
                     </div>
                   </div>
-                  <button
-                    className="btn btn-sm btn-danger"
-                    onClick={() => handleDelete(cls)}
-                    title="Delete class"
-                  ><MdDelete /></button>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      className="btn btn-sm btn-ghost"
+                      onClick={() => handleCopyId(cls.id)}
+                      title="Copy Class ID"
+                    ><MdContentCopy /></button>
+                    <button
+                      className="btn btn-sm btn-danger"
+                      onClick={() => handleDelete(cls)}
+                      title="Delete class"
+                    ><MdDelete /></button>
+                  </div>
                 </div>
               ))}
             </div>
