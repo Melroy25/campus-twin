@@ -6,6 +6,8 @@ import {
 } from '../../appwrite/database';
 import { toast } from 'react-hot-toast';
 import { MdAdd, MdEdit, MdDelete, MdCheck, MdClose, MdFlag } from 'react-icons/md';
+import { uploadFile } from '../../appwrite/storage';
+import { supabase } from '../../supabase/config';
 
 const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const EMPTY_FORM = { class_id: '', subject: '', teacher: '', room: '', time: '', day: 'Monday', status: 'normal' };
@@ -20,6 +22,91 @@ export default function AdminManageTimetable() {
   const [saving, setSaving] = useState(false);
   const [issues, setIssues] = useState([]);
   const [tab, setTab] = useState('timetable');
+
+  // PDF Timetable states
+  const [pdfFile, setPdfFile] = useState(null);
+  const [uploadedPdfUrl, setUploadedPdfUrl] = useState('');
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const fetchClassPdf = async (cid) => {
+    if (!cid.trim()) return;
+    setPdfLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('class_timetables')
+        .select('pdf_url')
+        .eq('class_id', cid.trim())
+        .maybeSingle();
+      if (data && !error) {
+        setUploadedPdfUrl(data.pdf_url);
+      } else {
+        setUploadedPdfUrl('');
+      }
+    } catch (err) {
+      console.error(err);
+      setUploadedPdfUrl('');
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tab === 'pdf' && classId.trim()) {
+      fetchClassPdf(classId);
+    }
+  }, [tab, classId]);
+
+  const handlePdfUpload = async () => {
+    if (!classId.trim()) return toast.error('Please enter a Class ID');
+    if (!pdfFile) return toast.error('Please select a PDF file');
+    
+    setPdfLoading(true);
+    try {
+      const fileUrl = await uploadFile(pdfFile);
+      if (!fileUrl) throw new Error('Storage upload failed');
+
+      const { error } = await supabase
+        .from('class_timetables')
+        .upsert({
+          class_id: classId.trim(),
+          pdf_url: fileUrl,
+          uploaded_at: new Date().toISOString()
+        });
+
+      if (error) throw error;
+
+      toast.success('Timetable PDF uploaded successfully!');
+      setUploadedPdfUrl(fileUrl);
+      setPdfFile(null);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to upload PDF: ' + err.message);
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const handlePdfDelete = async () => {
+    if (!classId.trim()) return;
+    if (!window.confirm('Are you sure you want to remove the PDF timetable for this class?')) return;
+    
+    setPdfLoading(true);
+    try {
+      const { error } = await supabase
+        .from('class_timetables')
+        .delete()
+        .eq('class_id', classId.trim());
+
+      if (error) throw error;
+
+      toast.success('Timetable PDF removed!');
+      setUploadedPdfUrl('');
+    } catch (err) {
+      toast.error('Failed to remove PDF');
+    } finally {
+      setPdfLoading(false);
+    }
+  };
 
   const fetchTimetable = async () => {
     if (!classId.trim()) return;
@@ -86,6 +173,7 @@ export default function AdminManageTimetable() {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
         <button className={`btn ${tab === 'timetable' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('timetable')}>Timetable CRUD</button>
+        <button className={`btn ${tab === 'pdf' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('pdf')}>PDF Timetable</button>
         <button className={`btn ${tab === 'issues' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('issues')}>
           Issues {issues.length > 0 && <span className="notif-badge" style={{ position: 'static', marginLeft: 4 }}>{issues.length}</span>}
         </button>
@@ -165,6 +253,83 @@ export default function AdminManageTimetable() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* === PDF Tab === */}
+      {tab === 'pdf' && (
+        <div className="card">
+          <h3 className="mb-16">📄 Upload Class Timetable PDF</h3>
+          <p className="text-muted mb-24" style={{ fontSize: '0.88rem' }}>
+            Upload an official timetable PDF for a class section. Students in this class will see a download button on their timetable screen.
+          </p>
+
+          <div style={{ maxWidth: 480 }}>
+            <div className="form-group mb-16">
+              <label className="form-label">Class ID *</label>
+              <input 
+                className="form-control" 
+                placeholder="e.g. CS-A-2024" 
+                value={classId} 
+                onChange={(e) => setClassId(e.target.value)} 
+              />
+            </div>
+
+            {classId.trim() && (
+              <>
+                {pdfLoading ? (
+                  <div className="loader-container" style={{ minHeight: 80 }}><div className="loader" /></div>
+                ) : uploadedPdfUrl ? (
+                  <div className="mb-24" style={{ 
+                    padding: 16, 
+                    background: 'rgba(40, 167, 69, 0.1)', 
+                    border: '1px solid #28a745', 
+                    borderRadius: 'var(--radius)',
+                    color: '#28a745' 
+                  }}>
+                    <p style={{ margin: '0 0 12px 0', fontWeight: 600 }}>✅ PDF Timetable exists for this class</p>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <a 
+                        href={uploadedPdfUrl} 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="btn btn-sm btn-ghost"
+                        style={{ background: 'var(--surface-1)' }}
+                      >
+                        View Existing PDF
+                      </a>
+                      <button className="btn btn-sm btn-danger" onClick={handlePdfDelete}>
+                        Remove PDF
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mb-24" style={{ padding: 16, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+                    <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>No PDF timetable uploaded yet for this class.</p>
+                  </div>
+                )}
+
+                <div className="form-group mb-24">
+                  <label className="form-label">Select Timetable PDF File *</label>
+                  <input 
+                    type="file" 
+                    accept=".pdf" 
+                    className="form-control" 
+                    onChange={(e) => setPdfFile(e.target.files[0])} 
+                  />
+                </div>
+
+                <button 
+                  className="btn btn-primary" 
+                  onClick={handlePdfUpload} 
+                  disabled={pdfLoading || !pdfFile}
+                  style={{ width: '100%' }}
+                >
+                  {pdfLoading ? 'Uploading...' : 'Upload & Link to Class'}
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
 

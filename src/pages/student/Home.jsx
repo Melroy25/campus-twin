@@ -39,6 +39,37 @@ export default function StudentHome() {
     fetchTodos();
   }, [currentUser]);
 
+  const checkDeadlines = (todoList) => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const activeTodos = todoList.filter(t => !t.is_completed);
+    
+    const overdueCount = activeTodos.filter(t => t.due_date && t.due_date < todayStr).length;
+    const dueTodayCount = activeTodos.filter(t => t.due_date === todayStr).length;
+    
+    if (dueTodayCount > 0 || overdueCount > 0) {
+      let message = 'Reminder: ';
+      if (dueTodayCount > 0 && overdueCount > 0) {
+        message += `You have ${dueTodayCount} task(s) due today and ${overdueCount} overdue!`;
+      } else if (dueTodayCount > 0) {
+        message += `You have ${dueTodayCount} task(s) due today!`;
+      } else {
+        message += `You have ${overdueCount} overdue task(s)!`;
+      }
+      
+      toast(message, {
+        icon: '⏰',
+        duration: 5000,
+        id: 'todo-deadline-alert',
+        style: {
+          background: 'var(--surface-2)',
+          color: 'var(--text)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)',
+        }
+      });
+    }
+  };
+
   const fetchTodos = async () => {
     if (!currentUser?.uid) return;
     const { data, error } = await supabase
@@ -51,7 +82,9 @@ export default function StudentHome() {
     if (error) {
       console.error('Error fetching todos:', error);
     } else {
-      setTodos(data || []);
+      const list = data || [];
+      setTodos(list);
+      checkDeadlines(list);
     }
   };
 

@@ -8,8 +8,9 @@ import {
 import { toast } from 'react-hot-toast';
 import {
   MdSchedule, MdRoom, MdPerson, MdFlag,
-  MdComment, MdClose, MdCalendarToday
+  MdComment, MdClose, MdCalendarToday, MdDownload
 } from 'react-icons/md';
+import { supabase } from '../../supabase/config';
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
@@ -19,6 +20,7 @@ export default function StudentTimetable() {
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState(DAYS[new Date().getDay()]);
   const [allEntries, setAllEntries] = useState([]);
+  const [pdfUrl, setPdfUrl] = useState('');
 
   // Report issue modal
   const [reportModal, setReportModal] = useState(false);
@@ -35,6 +37,13 @@ export default function StudentTimetable() {
 
   useEffect(() => {
     if (!classId) { setLoading(false); return; }
+    
+    // Fetch PDF timetable URL from Supabase
+    supabase.from('class_timetables').select('pdf_url').eq('class_id', classId).maybeSingle()
+      .then(({ data }) => setPdfUrl(data?.pdf_url || ''))
+      .catch(() => setPdfUrl(''));
+
+    // Fetch individual entries
     getTimetableByClass(classId).then((data) => {
       setAllEntries(data);
       setLoading(false);
@@ -80,6 +89,33 @@ export default function StudentTimetable() {
     <Layout pageTitle="Timetable">
       <h1 className="page-title">Timetable</h1>
       <p className="page-subtitle">View your class schedule and report issues</p>
+
+      {/* Official PDF Timetable Button */}
+      {pdfUrl && (
+        <div className="mb-24" style={{
+          background: 'linear-gradient(135deg, #1e212b 0%, #2a2d3a 100%)',
+          borderRadius: 'var(--radius)',
+          padding: '16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          color: 'white'
+        }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'white' }}>Official Class Timetable</h3>
+            <p style={{ margin: 0, fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)' }}>Download or view the official PDF version</p>
+          </div>
+          <a 
+            href={pdfUrl} 
+            target="_blank" 
+            rel="noreferrer" 
+            className="btn btn-primary"
+            style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+          >
+            <MdDownload size={18} /> View PDF
+          </a>
+        </div>
+      )}
 
       {/* Day selector */}
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 24, paddingBottom: 4 }}>
