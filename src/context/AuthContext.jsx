@@ -14,6 +14,30 @@ export const AuthProvider = ({ children }) => {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const getMergedProfile = async (user) => {
+    if (!user) return null;
+    let profile = await getUserProfile(user.uid);
+    if (profile && (profile.role === 'student' || profile.role === 'mentor')) {
+      try {
+        const { data, error } = await supabase
+          .from('student_profiles')
+          .select('*')
+          .eq('id', user.uid)
+          .maybeSingle();
+        if (data && !error) {
+          profile = {
+            ...profile,
+            personalEmail: data.email,
+            isHostelite: data.is_hostelite
+          };
+        }
+      } catch (err) {
+        console.error('Failed to merge Supabase profile:', err);
+      }
+    }
+    return profile;
+  };
+
   const login = async (usn, password, role = 'student') => {
     const email = usnToEmail(usn);
     const result = await loginUser(email, password);
@@ -22,7 +46,7 @@ export const AuthProvider = ({ children }) => {
     const user = await getCurrentUser();
     setCurrentUser(user);
     if (user) {
-      const profile = await getUserProfile(user.uid);
+      const profile = await getMergedProfile(user);
       setUserProfile(profile);
     }
     return result;
@@ -104,7 +128,7 @@ export const AuthProvider = ({ children }) => {
         const user = await getCurrentUser();
         setCurrentUser(user);
         if (user) {
-          const profile = await getUserProfile(user.uid);
+          const profile = await getMergedProfile(user);
           setUserProfile(profile);
         }
       } catch (err) {
