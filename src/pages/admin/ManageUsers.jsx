@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
 import { listenClasses, queryDocuments, deleteDocument, getAll, updateDocument } from '../../appwrite/database';
+import { supabase } from '../../supabase/config';
+import { sendCredentialsEmail } from '../../utils/email';
 import { toast } from 'react-hot-toast';
 import { MdAdd, MdDelete, MdPerson, MdClose, MdGroup, MdSearch, MdFileUpload, MdEdit, MdSave } from 'react-icons/md';
 import * as XLSX from 'xlsx';
@@ -14,6 +16,8 @@ export default function AdminManageUsers() {
     name: '', usn: '', password: '', role: 'student',
     class_id: '', mentor_id: '',
     class_assignments: [],
+    personalEmail: '',
+    isHostelite: false,
   });
   const [loading, setLoading] = useState(false);
   const [classes, setClasses] = useState([]);
@@ -32,6 +36,78 @@ export default function AdminManageUsers() {
 
   // For teacher multi-class entry
   const [assignRow, setAssignRow] = useState({ class_id: '', subject: '' });
+
+  // For credentials email
+  const [emailClassId, setEmailClassId] = useState('');
+  const [emailStudents, setEmailStudents] = useState([]);
+  const [emailPassword, setEmailPassword] = useState('123456');
+  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  const [emailStatus, setEmailStatus] = useState({ total: 0, current: 0, logs: [], sending: false });
+
+  useEffect(() => {
+    if (!emailClassId) {
+      setEmailStudents([]);
+      setSelectedStudentIds([]);
+      return;
+    }
+    const fetchStudentsForEmail = async () => {
+      const { data, error } = await supabase
+        .from('student_profiles')
+        .select('*')
+        .eq('class_id', emailClassId);
+      if (error) {
+        toast.error('Failed to load students for email');
+      } else {
+        setEmailStudents(data || []);
+        setSelectedStudentIds((data || []).map(s => s.id));
+      }
+    };
+    fetchStudentsForEmail();
+  }, [emailClassId]);
+
+  const handleSendEmails = async () => {
+    const studentsToSend = emailStudents.filter(s => selectedStudentIds.includes(s.id));
+    if (studentsToSend.length === 0) return toast.error('No students selected');
+    if (!emailPassword) return toast.error('Please enter a password to send');
+
+    setEmailStatus({ total: studentsToSend.length, current: 0, logs: [], sending: true });
+    
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < studentsToSend.length; i++) {
+      const student = studentsToSend[i];
+      if (!student.email) {
+        setEmailStatus(prev => ({
+          ...prev,
+          current: i + 1,
+          logs: [...prev.logs, `⚠️ ${student.name} (${student.usn}) skipped (No email ID)`]
+        }));
+        failCount++;
+        continue;
+      }
+
+      try {
+        await sendCredentialsEmail(student.name, student.email, student.usn, emailPassword);
+        setEmailStatus(prev => ({
+          ...prev,
+          current: i + 1,
+          logs: [...prev.logs, `✅ Credentials sent to ${student.name} (${student.email})`]
+        }));
+        successCount++;
+      } catch (err) {
+        setEmailStatus(prev => ({
+          ...prev,
+          current: i + 1,
+          logs: [...prev.logs, `❌ Failed for ${student.name}: ${err.message}`]
+        }));
+        failCount++;
+      }
+    }
+
+    setEmailStatus(prev => ({ ...prev, sending: false }));
+    toast.success(`Emailing completed! Sent: ${successCount}, Failed/Skipped: ${failCount}`);
+  };
 
   useEffect(() => {
     const unsub = listenClasses(setClasses);
@@ -84,6 +160,8 @@ export default function AdminManageUsers() {
           class_id: form.class_id,
           class_label: classObj?.label || form.class_id,
           mentor_id: form.mentor_id,
+          personalEmail: form.personalEmail,
+          isHostelite: form.isHostelite,
         } : {}),
         ...(form.role === 'teacher' || form.role === 'mentor' ? {
           class_assignments: form.class_assignments,
@@ -91,7 +169,7 @@ export default function AdminManageUsers() {
       };
       await createUser(form.usn, form.password, profileData);
       toast.success(`${form.role} account created for ${form.name}!`);
-      setForm({ name: '', usn: '', password: '', role: 'student', class_id: '', mentor_id: '', class_assignments: [] });
+      setForm({ name: '', usn: '', password: '', role: 'student', class_id: '', mentor_id: '', class_assignments: [], personalEmail: '', isHostelite: false });
       setAssignRow({ class_id: '', subject: '' });
       loadAllUsers();
     } catch (err) {
@@ -116,9 +194,27 @@ export default function AdminManageUsers() {
           class_id: editForm.class_id,
           class_label: classObj?.label || editForm.class_id,
           mentor_id: editForm.mentor_id,
+          personalEmail: editForm.personalEmail || '',
+          isHostelite: editForm.isHostelite || false,
         } : {}),
       };
       await updateDocument(editingUser._collection, editingUser.id, updateData);
+      
+      if (editingUser.role === 'student') {
+        const { error } = await supabase
+          .from('student_profiles')
+          .update({
+            name: editForm.name,
+            class_id: editForm.class_id || null,
+            class_label: classObj?.label || editForm.class_id || null,
+            mentor_id: editForm.mentor_id || null,
+            email: editForm.personalEmail || null,
+            is_hostelite: editForm.isHostelite || false,
+          })
+          .eq('id', editingUser.id);
+        if (error) console.error('Failed to sync update to Supabase SQL:', error);
+      }
+
       toast.success('User updated successfully!');
       setEditingUser(null);
       loadAllUsers();
@@ -132,6 +228,15 @@ export default function AdminManageUsers() {
     try {
       await deleteDocument(user._collection, user.id);
       await deleteDocument('userRoles', user.id);
+      
+      if (user.role === 'student') {
+        const { error } = await supabase
+          .from('student_profiles')
+          .delete()
+          .eq('id', user.id);
+        if (error) console.error('Failed to delete from Supabase SQL:', error);
+      }
+
       toast.success('User deleted from database');
       loadAllUsers();
     } catch (err) {
@@ -163,6 +268,14 @@ export default function AdminManageUsers() {
           const name = row.Name || row.name || row.NAME;
           const usn = row.usn || row.USN || row.Usn;
           const password = String(row.password || row.PASSWORD || '123456');
+          const emailVal = row.email || row.Email || row.EMAIL || '';
+          
+          let hosteliteVal = false;
+          const hosteliteKey = Object.keys(row).find(k => k.toLowerCase() === 'hostelite');
+          if (hosteliteKey) {
+            const h = String(row[hosteliteKey]).toLowerCase().trim();
+            hosteliteVal = h === 'true' || h === 'yes' || h === '1' || row[hosteliteKey] === true;
+          }
           
           if (!name || !usn) {
             setBulkStatus(prev => ({ ...prev, logs: [...prev.logs, `Row ${i+1}: Missing Name or USN (Skipped)`] }));
@@ -175,6 +288,8 @@ export default function AdminManageUsers() {
               role: 'student',
               class_id: bulkClassId,
               class_label: classObj?.label || bulkClassId,
+              personalEmail: emailVal,
+              isHostelite: hosteliteVal,
             });
             setBulkStatus(prev => ({ ...prev, current: i + 1, logs: [...prev.logs, `✅ ${name} (${usn}) created`] }));
           } catch (err) {
@@ -207,9 +322,10 @@ export default function AdminManageUsers() {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
         {[
-          { id: 'create', label: '➕ Create Account', icon: <MdAdd /> },
-          { id: 'bulk', label: '📁 Bulk Upload', icon: <MdFileUpload /> },
-          { id: 'list', label: `👥 All Users (${allUsers.length})`, icon: <MdGroup /> },
+          { id: 'create', label: '➕ Create Account' },
+          { id: 'bulk', label: '📁 Bulk Upload' },
+          { id: 'list', label: `👥 All Users (${allUsers.length})` },
+          { id: 'email', label: '✉️ Send Credentials' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -262,6 +378,14 @@ export default function AdminManageUsers() {
                       <option value="">— Select Mentor —</option>
                       {mentors.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.usn})</option>)}
                     </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Personal Email</label>
+                    <input type="email" className="form-control" placeholder="student@example.com" value={form.personalEmail} onChange={(e) => setForm({ ...form, personalEmail: e.target.value })} />
+                  </div>
+                  <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
+                    <input type="checkbox" id="isHostelite" checked={form.isHostelite} onChange={(e) => setForm({ ...form, isHostelite: e.target.checked })} />
+                    <label htmlFor="isHostelite" style={{ cursor: 'pointer', fontSize: '0.88rem' }}>Is Student Hostelite?</label>
                   </div>
                 </>
               )}
@@ -407,6 +531,107 @@ export default function AdminManageUsers() {
         </div>
       )}
 
+      {activeTab === 'email' && (
+        <div className="grid-2" style={{ alignItems: 'start' }}>
+          <div className="card card-lg">
+            <h3 className="mb-16">✉️ Send Credentials to Section</h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 20 }}>
+              Select a class section to email the login credentials (USN & Password) to all selected students.
+            </p>
+            <div className="form-group">
+              <label className="form-label">Select Class Section *</label>
+              <select className="form-control" value={emailClassId} onChange={(e) => setEmailClassId(e.target.value)}>
+                <option value="">— Select Class —</option>
+                {classes.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+            </div>
+
+            {emailStudents.length > 0 && (
+              <>
+                <div className="form-group">
+                  <label className="form-label">Password to Send (Default is 123456)</label>
+                  <input className="form-control" placeholder="123456" value={emailPassword} onChange={(e) => setEmailPassword(e.target.value)} />
+                </div>
+
+                <div className="flex-between mb-8">
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Students ({selectedStudentIds.length} selected)</span>
+                  <button 
+                    type="button"
+                    className="btn btn-ghost btn-sm" 
+                    onClick={() => {
+                      if (selectedStudentIds.length === emailStudents.length) setSelectedStudentIds([]);
+                      else setSelectedStudentIds(emailStudents.map(s => s.id));
+                    }}
+                  >
+                    {selectedStudentIds.length === emailStudents.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                </div>
+
+                <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 8, marginBottom: 16 }}>
+                  {emailStudents.map(student => (
+                    <div key={student.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--border-light)' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedStudentIds.includes(student.id)} 
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedStudentIds(prev => [...prev, student.id]);
+                          else setSelectedStudentIds(prev => prev.filter(id => id !== student.id));
+                        }} 
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{student.name} ({student.usn})</div>
+                        <div style={{ fontSize: '0.75rem', color: student.email ? 'var(--text-muted)' : 'var(--danger)' }}>
+                          {student.email || '⚠️ No email registered'}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <button 
+                  type="button"
+                  className="btn btn-primary btn-block" 
+                  onClick={handleSendEmails} 
+                  disabled={emailStatus.sending || selectedStudentIds.length === 0}
+                >
+                  {emailStatus.sending ? 'Sending...' : 'Send Login Details'}
+                </button>
+              </>
+            )}
+
+            {emailStatus.total > 0 && (
+              <div style={{ marginTop: 24 }}>
+                <div className="flex-between mb-8">
+                  <span className="font-semibold">Progress: {emailStatus.current} / {emailStatus.total}</span>
+                  <span className="text-muted">{Math.round((emailStatus.current / emailStatus.total) * 100)}%</span>
+                </div>
+                <div style={{ height: 8, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', background: 'var(--primary)', width: `${(emailStatus.current / emailStatus.total) * 100}%`, transition: 'width 0.3s' }} />
+                </div>
+                <div style={{ marginTop: 16, maxHeight: 150, overflowY: 'auto', background: 'var(--surface-2)', padding: 10, borderRadius: 8, fontSize: '0.78rem', fontFamily: 'monospace' }}>
+                  {emailStatus.logs.map((log, i) => <div key={i} style={{ marginBottom: 4 }}>{log}</div>)}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="card">
+            <h3>✉️ Email Setup Notice</h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: 12, lineHeight: 1.5 }}>
+              By default, this feature will run in <strong>Developer Mock Mode</strong> (it simulates sending and logs details in the progress output).
+            </p>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: 12, lineHeight: 1.5 }}>
+              To connect it to your actual email server, you can set up a free account at <strong>EmailJS.com</strong> and add these variables to your <code>.env</code> file:
+            </p>
+            <ul style={{ fontSize: '0.82rem', fontFamily: 'monospace', paddingLeft: 20, marginTop: 8, color: 'var(--primary)' }}>
+              <li>VITE_EMAILJS_SERVICE_ID</li>
+              <li>VITE_EMAILJS_TEMPLATE_ID</li>
+              <li>VITE_EMAILJS_PUBLIC_KEY</li>
+            </ul>
+          </div>
+        </div>
+      )}
+
       {/* Edit Modal */}
       {editingUser && (
         <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
@@ -426,13 +651,23 @@ export default function AdminManageUsers() {
               </div>
               
               {editingUser.role === 'student' && (
-                <div className="form-group">
-                  <label className="form-label">Class Section</label>
-                  <select className="form-control" value={editForm.class_id} onChange={(e) => setEditForm({ ...editForm, class_id: e.target.value })}>
-                    <option value="">— Select Class —</option>
-                    {classes.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-                  </select>
-                </div>
+                <>
+                  <div className="form-group">
+                    <label className="form-label">Class Section</label>
+                    <select className="form-control" value={editForm.class_id} onChange={(e) => setEditForm({ ...editForm, class_id: e.target.value })}>
+                      <option value="">— Select Class —</option>
+                      {classes.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Personal Email</label>
+                    <input type="email" className="form-control" value={editForm.personalEmail || ''} onChange={(e) => setEditForm({ ...editForm, personalEmail: e.target.value })} />
+                  </div>
+                  <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
+                    <input type="checkbox" id="editIsHostelite" checked={editForm.isHostelite || false} onChange={(e) => setEditForm({ ...editForm, isHostelite: e.target.checked })} />
+                    <label htmlFor="editIsHostelite" style={{ cursor: 'pointer', fontSize: '0.88rem' }}>Is Student Hostelite?</label>
+                  </div>
+                </>
               )}
 
               <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>

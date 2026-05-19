@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { loginUser, logoutUser, getCurrentUser, createNewUser } from '../appwrite/auth';
 import { getUserProfile, addDocumentWithId } from '../appwrite/database';
+import { supabase } from '../supabase/config';
 
 const AuthContext = createContext(null);
 
@@ -66,6 +67,24 @@ export const AuthProvider = ({ children }) => {
       name: profileData.name,
       uid,
     });
+
+    // Sync to Supabase Postgres (SQL) if role is student
+    if (profileData.role === 'student') {
+      const { error } = await supabase.from('student_profiles').insert([{
+        id: uid,
+        name: profileData.name,
+        usn: usn,
+        email: profileData.personalEmail || null,
+        class_id: profileData.class_id || null,
+        class_label: profileData.class_label || null,
+        mentor_id: profileData.mentor_id || null,
+        is_hostelite: profileData.isHostelite || false,
+      }]);
+      if (error) {
+        console.error('Failed to sync to Supabase SQL:', error);
+        throw error;
+      }
+    }
     
     return result;
   };
