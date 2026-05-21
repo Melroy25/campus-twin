@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
 import {
   getTimetableByClass, addDocument, updateDocument, deleteDocument,
-  getPendingComments, addChangeLog, addNotification
+  getPendingComments, addChangeLog, addNotification, getAll, getStudentsByClass
 } from '../../appwrite/database';
 import { toast } from 'react-hot-toast';
 import { MdAdd, MdEdit, MdDelete, MdCheck, MdClose, MdFlag } from 'react-icons/md';
@@ -22,6 +22,7 @@ export default function AdminManageTimetable() {
   const [saving, setSaving] = useState(false);
   const [issues, setIssues] = useState([]);
   const [tab, setTab] = useState('timetable');
+  const [changelogs, setChangelogs] = useState([]);
 
   // PDF Timetable states
   const [pdfFile, setPdfFile] = useState(null);
@@ -50,9 +51,24 @@ export default function AdminManageTimetable() {
     }
   };
 
+  const fetchHistory = async () => {
+    setLoading(true);
+    try {
+      const logs = await getAll('changelogs');
+      setChangelogs(logs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to load history');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (tab === 'pdf' && classId.trim()) {
       fetchClassPdf(classId);
+    } else if (tab === 'history') {
+      fetchHistory();
     }
   }, [tab, classId]);
 
@@ -74,6 +90,19 @@ export default function AdminManageTimetable() {
         });
 
       if (error) throw error;
+
+      // Add automated change log
+      await addChangeLog(classId.trim(), 'Uploaded PDF', `Uploaded new timetable PDF for class ${classId.trim()}`, 'admin');
+      
+      // Notify all students of the class
+      try {
+        const students = await getStudentsByClass(classId.trim());
+        for (const student of students) {
+          await addNotification(student.uid, `A new official PDF timetable has been uploaded for your class ${classId.trim()}.`);
+        }
+      } catch (notifErr) {
+        console.error('Failed to notify students:', notifErr);
+      }
 
       toast.success('Timetable PDF uploaded successfully!');
       setUploadedPdfUrl(fileUrl);
@@ -98,6 +127,19 @@ export default function AdminManageTimetable() {
         .eq('class_id', classId.trim());
 
       if (error) throw error;
+
+      // Add automated change log
+      await addChangeLog(classId.trim(), 'Removed PDF', `Removed timetable PDF for class ${classId.trim()}`, 'admin');
+
+      // Notify students
+      try {
+        const students = await getStudentsByClass(classId.trim());
+        for (const student of students) {
+          await addNotification(student.uid, `The official PDF timetable has been removed for your class ${classId.trim()}.`);
+        }
+      } catch (notifErr) {
+        console.error('Failed to notify students:', notifErr);
+      }
 
       toast.success('Timetable PDF removed!');
       setUploadedPdfUrl('');
@@ -132,9 +174,33 @@ export default function AdminManageTimetable() {
     try {
       if (editEntry) {
         await updateDocument('timetable', editEntry.id, { ...form, status: 'modified' });
+        await addChangeLog(editEntry.id, 'Modified entry', `Modified entry for ${form.subject} on ${form.day} at ${form.time} in room ${form.room}`, 'admin');
+        
+        // Notify students
+        try {
+          const students = await getStudentsByClass(form.class_id);
+          for (const student of students) {
+            await addNotification(student.uid, `Timetable modified: ${form.subject} on ${form.day} at ${form.time}.`);
+          }
+        } catch (notifErr) {
+          console.error(notifErr);
+        }
+
         toast.success('Entry updated');
       } else {
-        await addDocument('timetable', form);
+        const newDoc = await addDocument('timetable', form);
+        await addChangeLog(newDoc.$id, 'Added entry', `Added entry for ${form.subject} on ${form.day} at ${form.time} in room ${form.room}`, 'admin');
+        
+        // Notify students
+        try {
+          const students = await getStudentsByClass(form.class_id);
+          for (const student of students) {
+            await addNotification(student.uid, `A new timetable entry has been added: ${form.subject} on ${form.day} at ${form.time}.`);
+          }
+        } catch (notifErr) {
+          console.error(notifErr);
+        }
+
         toast.success('Entry added');
       }
       setShowForm(false);
@@ -145,7 +211,21 @@ export default function AdminManageTimetable() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this timetable entry?')) return;
+    const entryToDelete = entries.find(e => e.id === id);
     await deleteDocument('timetable', id);
+    if (entryToDelete) {
+      await addChangeLog(id, 'Deleted entry', `Deleted entry for ${entryToDelete.subject} on ${entryToDelete.day} at ${entryToDelete.time}`, 'admin');
+      
+      // Notify students
+      try {
+        const students = await getStudentsByClass(entryToDelete.class_id);
+        for (const student of students) {
+          await addNotification(student.uid, `Timetable entry deleted: ${entryToDelete.subject} on ${entryToDelete.day} at ${entryToDelete.time}.`);
+        }
+      } catch (notifErr) {
+        console.error(notifErr);
+      }
+    }
     toast.success('Entry deleted');
     fetchTimetable();
   };
@@ -177,6 +257,7 @@ export default function AdminManageTimetable() {
         <button className={`btn ${tab === 'issues' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('issues')}>
           Issues {issues.length > 0 && <span className="notif-badge" style={{ position: 'static', marginLeft: 4 }}>{issues.length}</span>}
         </button>
+        <button className={`btn ${tab === 'history' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('history')}>Version History</button>
       </div>
 
       {/* === Timetable Tab === */}
@@ -330,6 +411,45 @@ export default function AdminManageTimetable() {
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {/* === History Tab === */}
+      {tab === 'history' && (
+        <div className="card">
+          <h3 className="mb-16">📜 Overall Timetable Change Logs</h3>
+          {loading ? (
+            <div className="loader-container" style={{ minHeight: 100 }}><div className="loader" /></div>
+          ) : changelogs.length === 0 ? (
+            <div className="empty-state"><p>No changes recorded yet.</p></div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, borderLeft: '2px solid var(--border)', paddingLeft: 16, marginLeft: 8 }}>
+              {changelogs.map((log) => (
+                <div key={log.id || log.$id} style={{ position: 'relative' }}>
+                  <div style={{
+                    position: 'absolute',
+                    left: -25,
+                    top: 4,
+                    width: 16,
+                    height: 16,
+                    borderRadius: '50%',
+                    background: 'var(--primary)',
+                    border: '3px solid var(--background)'
+                  }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <span className="font-semibold">{log.action}</span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      {new Date(log.createdAt).toLocaleString()}
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.88rem' }}>{log.details}</p>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', fontStyle: 'italic', color: 'var(--text-muted)' }}>
+                    Changed by: {log.changed_by} (Timetable ID: {log.timetable_id})
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

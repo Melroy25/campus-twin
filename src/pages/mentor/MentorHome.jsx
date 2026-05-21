@@ -3,11 +3,12 @@ import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
 import {
   queryDocuments, getById, getAttendanceByStudent, getAttendanceSummary,
-  getAICTEByStudent
+  getAICTEByStudent, updateDocument, getClasses
 } from '../../appwrite/database';
 import { where } from '../../appwrite/database';
 import { MdPeople, MdSchool, MdCheckCircle, MdStar, MdPerson } from 'react-icons/md';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 
 export default function MentorHome() {
   const { userProfile, currentUser } = useAuth();
@@ -24,10 +25,27 @@ export default function MentorHome() {
       const students = await queryDocuments('students', where('mentor_id', '==', currentUser.uid));
       setMentees(students);
 
-      // Get unique class IDs
-      const classIds = [...new Set(students.map((s) => s.class_id).filter(Boolean))];
-      const classData = await Promise.all(classIds.map((id) => getById('classes', id)));
-      setClasses(classData.filter(Boolean));
+      // Load mentor's classes from multiple sources:
+      // 1. Classes assigned to the mentor in class_assignments
+      // 2. Classes of the mentor's mentees
+      // 3. Classes where mentor_id matches currentUser.uid
+      let mentorClasses = [];
+      try {
+        const allClasses = await getClasses();
+        const assignedClassIds = new Set([
+          ...(userProfile?.class_assignments || []).map(a => a.class_id).filter(Boolean),
+          ...students.map(s => s.class_id).filter(Boolean)
+        ]);
+        mentorClasses = allClasses.filter(c => assignedClassIds.has(c.id));
+      } catch (err) {
+        console.error("Failed to load classes via getClasses, falling back to getById:", err);
+        const assignedClassIds = (userProfile?.class_assignments || []).map((a) => a.class_id).filter(Boolean);
+        const menteeClassIds = students.map((s) => s.class_id).filter(Boolean);
+        const allClassIds = [...new Set([...assignedClassIds, ...menteeClassIds])];
+        const classData = await Promise.all(allClassIds.map((id) => getById('classes', id)));
+        mentorClasses = classData.filter(Boolean);
+      }
+      setClasses(mentorClasses);
 
       // Get quick stats per mentee
       const stats = {};
@@ -47,7 +65,7 @@ export default function MentorHome() {
       setLoading(false);
     };
     load();
-  }, [currentUser]);
+  }, [currentUser, userProfile]);
 
   const attnColor = (pct) => {
     if (pct === null) return 'var(--text-muted)';
@@ -56,7 +74,8 @@ export default function MentorHome() {
     return 'var(--danger)';
   };
 
-  const menteesByClass = classes.map((cls) => ({
+  const mentorClasses = classes;
+  const menteesByClass = mentorClasses.map((cls) => ({
     cls,
     students: mentees.filter((s) => s.class_id === cls.id),
   }));
@@ -97,74 +116,108 @@ export default function MentorHome() {
         <div className="card mb-24" style={{ background: 'var(--primary-light)', borderColor: 'var(--primary)' }}>
           <h4 style={{ color: 'var(--primary)', marginBottom: 10 }}><MdSchool style={{ verticalAlign: 'middle' }} /> Your Assigned Classes</h4>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {userProfile.class_assignments.map((a, i) => {
-              const cls = classes.find((c) => c.id === a.class_id);
-              return (
-                <span key={i} style={{
-                  padding: '4px 12px', background: 'var(--primary)',
-                  color: '#fff', borderRadius: 20, fontSize: '0.82rem', fontWeight: 600,
-                }}>{cls?.label || a.class_id}</span>
+            {(() => {
+              const seen = new Set();
+              return (userProfile.class_assignments
+                .filter((a) => {
+                  if (seen.has(a.class_id)) return false;
+                  seen.add(a.class_id);
+                  return true;
+                })
+                .map((a, i) => {
+                  const cls = classes.find((c) => c.id === a.class_id);
+                  return (
+                    <span key={i} style={{
+                      padding: '4px 12px', background: 'var(--primary)',
+                      color: '#fff', borderRadius: 20, fontSize: '0.82rem', fontWeight: 600,
+                    }}>{cls?.label || a.class_id}</span>
+                  );
+                })
               );
-            })}
+            })()}
           </div>
         </div>
       )}
 
       {loading ? (
         <div className="loader-container" style={{ minHeight: 200 }}><div className="loader" /></div>
-      ) : mentees.length === 0 ? (
+      ) : (classes.length === 0 && unclassed.length === 0) ? (
         <div className="empty-state">
           <div className="empty-icon"><MdPeople /></div>
-          <p>No mentees assigned yet. Ask admin to assign students to you.</p>
+          <p>No classes or mentees assigned yet. Ask admin to assign classes or students to you.</p>
         </div>
       ) : (
         <>
           {menteesByClass.map(({ cls, students }) => (
             <div key={cls.id} className="card mb-16">
-              <h3 style={{ marginBottom: 14 }}><MdSchool style={{ verticalAlign: 'middle', marginRight: 6 }} />{cls.label}</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <h3 style={{ margin: 0 }}><MdSchool style={{ verticalAlign: 'middle', marginRight: 6 }} />{cls.label}</h3>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  {cls.chat_enabled ? (
+                    <>
+                      <span className="badge badge-approved" style={{ margin: 0 }}>Class Chat Active</span>
+                      <button
+                        className="btn btn-sm btn-ghost"
+                        style={{ fontSize: '0.78rem', background: 'var(--primary-light)', padding: '5px 10px', cursor: 'pointer' }}
+                        onClick={() => navigate(`/mentor/chat?class_id=${cls.id}`)}
+                      >
+                        Join Chat
+                      </button>
+                    </>
+                  ) : (
+                    <span className="badge badge-pending" style={{ margin: 0 }}>Chat Disabled (Awaiting Class Advisor)</span>
+                  )}
+                </div>
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {students.map((s) => {
-                  const stat = menteeStats[s.id] || {};
-                  return (
-                    <div
-                      key={s.id}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 14,
-                        padding: '12px 14px',
-                        border: '1.5px solid var(--border)',
-                        borderRadius: 'var(--radius)',
-                        cursor: 'pointer', transition: 'box-shadow 0.15s',
-                      }}
-                      onClick={() => navigate('/mentor/students')}
-                      onMouseEnter={(e) => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
-                      onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}
-                    >
-                      <div style={{
-                        width: 38, height: 38, borderRadius: '50%',
-                        background: 'var(--primary)', color: '#fff',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontWeight: 700, fontSize: '0.9rem', flexShrink: 0,
-                      }}>
-                        {s.name?.charAt(0)?.toUpperCase() || '?'}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div className="font-semibold" style={{ fontSize: '0.9rem' }}>{s.name}</div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{s.usn}</div>
-                      </div>
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: attnColor(stat.avgPct) }}>
-                          {stat.avgPct !== null ? `${stat.avgPct}%` : '—'}
+                {students.length === 0 ? (
+                  <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-muted)', fontStyle: 'italic', padding: '12px 14px' }}>
+                    No mentees in this class section yet.
+                  </p>
+                ) : (
+                  students.map((s) => {
+                    const stat = menteeStats[s.id] || {};
+                    return (
+                      <div
+                        key={s.id}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 14,
+                          padding: '12px 14px',
+                          border: '1.5px solid var(--border)',
+                          borderRadius: 'var(--radius)',
+                          cursor: 'pointer', transition: 'box-shadow 0.15s',
+                        }}
+                        onClick={() => navigate('/mentor/students')}
+                        onMouseEnter={(e) => e.currentTarget.style.boxShadow = 'var(--shadow-md)'}
+                        onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}
+                      >
+                        <div style={{
+                          width: 38, height: 38, borderRadius: '50%',
+                          background: 'var(--primary)', color: '#fff',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontWeight: 700, fontSize: '0.9rem', flexShrink: 0,
+                        }}>
+                          {s.name?.charAt(0)?.toUpperCase() || '?'}
                         </div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Attendance</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="font-semibold" style={{ fontSize: '0.9rem' }}>{s.name}</div>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{s.usn}</div>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: attnColor(stat.avgPct) }}>
+                            {stat.avgPct !== null ? `${stat.avgPct}%` : '—'}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Attendance</div>
+                        </div>
+                        {stat.pendingAICTE > 0 && (
+                          <span className="badge badge-pending" style={{ flexShrink: 0 }}>
+                            <MdStar style={{ verticalAlign: 'middle' }} /> {stat.pendingAICTE} AICTE
+                          </span>
+                        )}
                       </div>
-                      {stat.pendingAICTE > 0 && (
-                        <span className="badge badge-pending" style={{ flexShrink: 0 }}>
-                          <MdStar style={{ verticalAlign: 'middle' }} /> {stat.pendingAICTE} AICTE
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             </div>
           ))}

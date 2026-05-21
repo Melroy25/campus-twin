@@ -36,7 +36,12 @@ import TeacherLeave       from './pages/teacher/LeaveRequests';
 // Mentor
 import MentorHome         from './pages/mentor/MentorHome';
 import MentorStudents     from './pages/mentor/MentorStudents';
-import MentorAICTE        from './pages/mentor/AICTEApprovals';
+import MentorCreateClass from './pages/mentor/CreateClass';
+import MentorAICTEApprovals from './pages/mentor/AICTEApprovals';
+
+
+// Shared / Chat
+import ClassChat          from './pages/shared/ClassChat';
 
 function RoleRedirect() {
   const { userProfile } = useAuth();
@@ -69,6 +74,7 @@ function App() {
           <Route path="/student/courses"      element={<PrivateRoute allowedRoles={['student']}><StudentCourses /></PrivateRoute>} />
           <Route path="/student/events"       element={<PrivateRoute allowedRoles={['student']}><StudentEvents /></PrivateRoute>} />
           <Route path="/student/complaints"   element={<PrivateRoute allowedRoles={['student']}><StudentComplaintBox /></PrivateRoute>} />
+          <Route path="/student/chat"         element={<PrivateRoute allowedRoles={['student']}><ClassChat /></PrivateRoute>} />
 
           {/* Admin Routes */}
           <Route path="/admin"                element={<PrivateRoute allowedRoles={['admin']}><AdminDashboard /></PrivateRoute>} />
@@ -78,6 +84,7 @@ function App() {
           <Route path="/admin/marks-cards"    element={<PrivateRoute allowedRoles={['admin']}><AdminMarksCards /></PrivateRoute>} />
           <Route path="/admin/events"         element={<PrivateRoute allowedRoles={['admin']}><AdminEvents /></PrivateRoute>} />
           <Route path="/admin/complaints"     element={<PrivateRoute allowedRoles={['admin']}><AdminComplaintBox /></PrivateRoute>} />
+          <Route path="/admin/chat"           element={<PrivateRoute allowedRoles={['admin']}><ClassChat /></PrivateRoute>} />
 
           {/* Teacher Routes */}
           <Route path="/teacher"              element={<PrivateRoute allowedRoles={['teacher']}><TeacherHome /></PrivateRoute>} />
@@ -86,13 +93,17 @@ function App() {
           <Route path="/teacher/leave"        element={<PrivateRoute allowedRoles={['teacher']}><TeacherLeave /></PrivateRoute>} />
           {/* Teacher complaints reuse the same UI (user_id = teacher uid) */}
           <Route path="/teacher/complaints"   element={<PrivateRoute allowedRoles={['teacher']}><StudentComplaintBox /></PrivateRoute>} />
+          <Route path="/teacher/chat"         element={<PrivateRoute allowedRoles={['teacher']}><ClassChat /></PrivateRoute>} />
 
           {/* Mentor Routes */}
-          <Route path="/mentor"               element={<PrivateRoute allowedRoles={['mentor']}><MentorHome /></PrivateRoute>} />
-          <Route path="/mentor/students"      element={<PrivateRoute allowedRoles={['mentor']}><MentorStudents /></PrivateRoute>} />
-          <Route path="/mentor/aicte"         element={<PrivateRoute allowedRoles={['mentor']}><MentorAICTE /></PrivateRoute>} />
+          <Route path="/mentor"               element={<PrivateRoute allowedRoles={['mentor', 'teacher']}><MentorHome /></PrivateRoute>} />
+          <Route path="/mentor/students"      element={<PrivateRoute allowedRoles={['mentor', 'teacher']}><MentorStudents /></PrivateRoute>} />
+          <Route path="/mentor/aicte"         element={<PrivateRoute allowedRoles={['mentor', 'teacher']}><MentorAICTEApprovals /></PrivateRoute>} />
+
+          <Route path="/mentor/classes" element={<PrivateRoute allowedRoles={['mentor', 'teacher']}><MentorCreateClass /></PrivateRoute>} />
           {/* Mentor complaints reuse the same UI */}
-          <Route path="/mentor/complaints"    element={<PrivateRoute allowedRoles={['mentor']}><StudentComplaintBox /></PrivateRoute>} />
+          <Route path="/mentor/complaints"    element={<PrivateRoute allowedRoles={['mentor', 'teacher']}><StudentComplaintBox /></PrivateRoute>} />
+          <Route path="/mentor/chat"          element={<PrivateRoute allowedRoles={['mentor', 'teacher']}><ClassChat /></PrivateRoute>} />
 
           {/* 404 */}
           <Route path="*" element={<Navigate to="/" replace />} />

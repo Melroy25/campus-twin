@@ -19,7 +19,7 @@ const CATEGORIES = [
 ];
 
 export default function StudentAICTE() {
-  const { currentUser } = useAuth();
+  const { currentUser, userProfile } = useAuth();
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -52,6 +52,7 @@ export default function StudentAICTE() {
       if (file) proofUrl = await uploadAICTEProof(currentUser.uid, file);
       await addDocument('aictePoints', {
         student_id: currentUser.uid,
+        mentor_id: userProfile?.mentor_id || '',
         category: form.category,
         description: form.description,
         points: Number(form.points),

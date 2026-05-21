@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
 import { listenEvents } from '../../appwrite/database';
-import { MdEvent } from 'react-icons/md';
+import { MdEvent, MdDownload } from 'react-icons/md';
 
 export default function StudentEvents() {
   const [events, setEvents] = useState([]);
@@ -34,10 +34,28 @@ export default function StudentEvents() {
         <div className="events-grid">
           {events.map((ev) => (
             <div key={ev.id} className="event-card">
-              {ev.image
-                ? <img src={ev.image} alt={ev.title} className="event-card-image" />
-                : <div className="event-card-image-placeholder">🎉</div>
-              }
+              <div style={{ position: 'relative' }}>
+                {ev.image ? (
+                  <>
+                    <img src={ev.image} alt={ev.title} className="event-card-image" />
+                    <a href={ev.image} download={`${ev.title || 'event_image'}.jpg`} target="_blank" rel="noreferrer" style={{
+                      position: 'absolute', top: 12, right: 12,
+                      background: 'rgba(255,255,255,0.9)',
+                      color: 'var(--primary)',
+                      width: 32, height: 32,
+                      borderRadius: '50%',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: 'var(--shadow)',
+                      textDecoration: 'none',
+                      transition: 'transform 0.2s'
+                    }} title="Download Image">
+                      <MdDownload size={18} />
+                    </a>
+                  </>
+                ) : (
+                  <div className="event-card-image-placeholder">🎉</div>
+                )}
+              </div>
               <div className="event-card-body">
                 <div className="event-card-date">{formatDate(ev.date)}</div>
                 <div className="event-card-title">{ev.title}</div>

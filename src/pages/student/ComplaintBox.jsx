@@ -15,6 +15,34 @@ export default function StudentComplaintBox() {
   const [myComplaints, setMyComplaints] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [activeTab, setActiveTab] = useState('submit'); // 'submit' | 'history'
+  const [historyFilter, setHistoryFilter] = useState('all');
+
+  const getStatusStyles = (status) => {
+    switch (status) {
+      case 'open':
+        return { background: 'rgba(239, 68, 68, 0.1)', color: 'rgb(239, 68, 68)', border: '1px solid rgba(239, 68, 68, 0.2)' };
+      case 'approved':
+        return { background: 'rgba(245, 158, 11, 0.1)', color: 'rgb(245, 158, 11)', border: '1px solid rgba(245, 158, 11, 0.2)' };
+      case 'resolved':
+        return { background: 'rgba(16, 185, 129, 0.1)', color: 'rgb(16, 185, 129)', border: '1px solid rgba(16, 185, 129, 0.2)' };
+      case 'rejected':
+        return { background: 'rgba(107, 114, 128, 0.1)', color: 'rgb(107, 114, 128)', border: '1px solid rgba(107, 114, 128, 0.2)' };
+      default:
+        return { background: 'var(--surface-2)', color: 'var(--text-secondary)' };
+    }
+  };
+
+  const statusLabel = (status) => {
+    switch (status) {
+      case 'open': return '🔴 Open';
+      case 'approved': return '🟡 Approved';
+      case 'resolved': return '🟢 Resolved';
+      case 'rejected': return '❌ Rejected';
+      default: return status || 'Unknown';
+    }
+  };
+
+  const filteredHistory = myComplaints.filter(c => historyFilter === 'all' ? true : c.status === historyFilter);
 
   const loadMyComplaints = async () => {
     if (!currentUser?.uid) return;
@@ -215,42 +243,112 @@ export default function StudentComplaintBox() {
 
       {activeTab === 'history' && (
         <div>
+          {/* History filter tabs */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+            {['all', 'open', 'approved', 'resolved', 'rejected'].map((f) => (
+              <button
+                key={f}
+                type="button"
+                className={`btn btn-xs ${historyFilter === f ? 'btn-primary' : 'btn-ghost'}`}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '0.75rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: historyFilter === f ? 'var(--primary)' : 'var(--surface-2)',
+                  color: historyFilter === f ? '#fff' : 'var(--text-secondary)'
+                }}
+                onClick={() => setHistoryFilter(f)}
+              >
+                {f === 'all' ? 'All Issues' : f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
+          </div>
+
           {loadingHistory ? (
             <div className="loader-container" style={{ minHeight: 200 }}><div className="loader" /></div>
-          ) : myComplaints.length === 0 ? (
+          ) : filteredHistory.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon"><MdInbox /></div>
-              <p>You haven't submitted any complaints yet.</p>
+              <p>{historyFilter === 'all' ? "You haven't submitted any complaints yet." : `No complaints found with status "${historyFilter}".`}</p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {myComplaints.map((c) => (
-                <div key={c.id} className="card" style={{
-                  borderLeft: `4px solid ${c.status === 'open' ? 'var(--warning)' : 'var(--success)'}`,
-                }}>
-                  <div className="flex-between mb-8">
-                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{formatDate(c.createdAt)}</span>
-                    <span className={`badge ${c.status === 'open' ? 'badge-pending' : 'badge-approved'}`}>
-                      {c.status === 'open' ? '🔴 Open' : '✅ Resolved'}
-                    </span>
-                  </div>
-                  <p style={{ fontSize: '0.9rem', lineHeight: 1.6, marginBottom: c.image_url ? 12 : 0 }}>
-                    {c.message}
-                  </p>
-                  {c.image_url && (
-                    <img
-                      src={c.image_url}
-                      alt="Your attachment"
-                      style={{ maxWidth: '100%', maxHeight: 160, borderRadius: 'var(--radius-sm)', objectFit: 'cover', marginTop: 8 }}
-                    />
-                  )}
-                  {c.status === 'resolved' && (
-                    <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', color: 'var(--success)' }}>
-                      <MdCheckCircle /> Admin has resolved this complaint.
+              {filteredHistory.map((c) => {
+                const badgeStyles = getStatusStyles(c.status);
+                return (
+                  <div key={c.id} className="card" style={{
+                    borderLeft: `4px solid ${
+                      c.status === 'open' ? 'rgb(239, 68, 68)' :
+                      c.status === 'approved' ? 'rgb(245, 158, 11)' :
+                      c.status === 'resolved' ? 'rgb(16, 185, 129)' : 'rgb(107, 114, 128)'
+                    }`,
+                    padding: '20px',
+                    transition: 'all 0.2s ease',
+                  }}>
+                    <div className="flex-between mb-8">
+                      <div>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{formatDate(c.createdAt)}</span>
+                        {c.category && (
+                          <span style={{
+                            marginLeft: 8,
+                            padding: '2px 8px',
+                            background: 'var(--surface-2)',
+                            borderRadius: '4px',
+                            fontSize: '0.7rem',
+                            color: 'var(--text-secondary)',
+                            fontWeight: 500
+                          }}>
+                            {c.category}
+                          </span>
+                        )}
+                      </div>
+                      <span style={{
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        ...badgeStyles
+                      }}>
+                        {statusLabel(c.status)}
+                      </span>
                     </div>
-                  )}
-                </div>
-              ))}
+                    <p style={{ fontSize: '0.9rem', lineHeight: 1.6, margin: 0, color: 'var(--text-primary)' }}>
+                      {c.message}
+                    </p>
+                    {c.image_url && (
+                      <div style={{ marginTop: 12 }}>
+                        <img
+                          src={c.image_url}
+                          alt="Your attachment"
+                          style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 'var(--radius-sm)', objectFit: 'cover', border: '1px solid var(--border)' }}
+                        />
+                      </div>
+                    )}
+                    {c.admin_reply && (
+                      <div style={{
+                        marginTop: 14,
+                        padding: '12px 16px',
+                        background: 'var(--surface-2)',
+                        borderRadius: '8px',
+                        borderLeft: '3px solid var(--primary)',
+                        fontSize: '0.85rem',
+                      }}>
+                        <div style={{ fontWeight: 600, color: 'var(--primary)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>💬 Admin Reply</span>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>
+                            (Updated status to: {statusLabel(c.status)})
+                          </span>
+                        </div>
+                        <p style={{ margin: 0, color: 'var(--text-primary)', fontStyle: 'italic', lineHeight: 1.5 }}>
+                          "{c.admin_reply}"
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

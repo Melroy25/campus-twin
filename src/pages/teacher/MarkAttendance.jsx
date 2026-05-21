@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
 import { getStudentsByClass, addDocument, getById } from '../../appwrite/database';
@@ -7,9 +8,24 @@ import { MdSave, MdHowToReg } from 'react-icons/md';
 
 export default function TeacherMarkAttendance() {
   const { userProfile } = useAuth();
+  const [searchParams] = useSearchParams();
+  const classIdParam = searchParams.get('class_id');
+  const subjectParam = searchParams.get('subject');
+
   const [assignments, setAssignments] = useState([]); // [{class_id, subject, classInfo}]
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(() => searchParams.get('date') || new Date().toISOString().split('T')[0]);
+  const [time, setTime] = useState(() => {
+    const paramTime = searchParams.get('time');
+    if (paramTime) return paramTime;
+    const now = new Date();
+    let hours = now.getHours();
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    return `${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
+  });
   const [students, setStudents] = useState([]);
   const [attendance, setAttendance] = useState({});
   const [loading, setLoading] = useState(false);
@@ -26,12 +42,24 @@ export default function TeacherMarkAttendance() {
         })
       );
       setAssignments(withInfo);
+
+      let initialIdx = 0;
+      if (classIdParam && subjectParam) {
+        const foundIdx = withInfo.findIndex(
+          (a) => a.class_id === classIdParam && a.subject === subjectParam
+        );
+        if (foundIdx !== -1) {
+          initialIdx = foundIdx;
+        }
+      }
+
+      setSelectedIdx(initialIdx);
       if (withInfo.length > 0) {
-        loadStudents(withInfo[0].class_id);
+        loadStudents(withInfo[initialIdx].class_id);
       }
     };
     if (userProfile) load();
-  }, [userProfile]);
+  }, [userProfile, classIdParam, subjectParam]);
 
   const loadStudents = async (classId) => {
     if (!classId) return;
@@ -74,7 +102,9 @@ export default function TeacherMarkAttendance() {
           class_id: current.class_id,
           subject: current.subject,
           date,
+          time,
           status: attendance[s.id] || 'absent',
+          marked_by: userProfile.uid,
         })
       ));
       toast.success(`Attendance saved for ${current.classInfo?.label || current.class_id} — ${current.subject}!`);
@@ -119,6 +149,15 @@ export default function TeacherMarkAttendance() {
                 type="date" className="form-control"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="form-label" style={{ marginBottom: 4 }}>Time / Slot</label>
+              <input
+                type="text" className="form-control"
+                placeholder="e.g. 09:30 AM or Period 1"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
               />
             </div>
           </div>

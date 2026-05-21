@@ -3,13 +3,13 @@ import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
 import {
   queryDocuments, getById,
-  getAttendanceByStudent, getAttendanceSummary, getAICTEByStudent
+  getAttendanceByStudent, getAttendanceSummary, getAICTEByStudent, getStudentsByClass
 } from '../../appwrite/database';
 import { where } from '../../appwrite/database';
 import { MdPeople, MdSearch, MdExpandMore, MdExpandLess, MdStar, MdCheckCircle } from 'react-icons/md';
 
 export default function MentorStudents() {
-  const { currentUser } = useAuth();
+  const { userProfile, currentUser } = useAuth();
   const [mentees, setMentees] = useState([]);
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -20,11 +20,13 @@ export default function MentorStudents() {
   useEffect(() => {
     if (!currentUser?.uid) return;
     const load = async () => {
+      // Fetch students who have this mentor assigned
       const students = await queryDocuments('students', where('mentor_id', '==', currentUser.uid));
       setMentees(students);
 
-      const classIds = [...new Set(students.map((s) => s.class_id).filter(Boolean))];
-      const classData = await Promise.all(classIds.map((id) => getById('classes', id)));
+      // Fetch distinct class details for these students
+      const classIds = [...new Set(students.map(s => s.class_id).filter(Boolean))];
+      const classData = await Promise.all(classIds.map(id => getById('classes', id)));
       setClasses(classData.filter(Boolean));
 
       const data = {};
@@ -52,7 +54,7 @@ export default function MentorStudents() {
       setLoading(false);
     };
     load();
-  }, [currentUser]);
+  }, [currentUser, userProfile]);
 
   const toggleExpand = (id) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
 

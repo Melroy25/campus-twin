@@ -50,9 +50,8 @@ export const getCurrentUser = async () => {
  * This utilizes a Netlify serverless function to securely call the Appwrite Server API.
  */
 export const createNewUser = async (email, password, name) => {
-  // If not running on a Netlify environment (like local dev without netlify dev),
-  // this function expects the proxy to be available or you'd need to mock it.
   try {
+    // 1. Try to use the Netlify function first (preferred in production)
     const res = await fetch('/.netlify/functions/create-user', {
       method: 'POST',
       headers: {
@@ -67,12 +66,18 @@ export const createNewUser = async (email, password, name) => {
       }),
     });
 
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Failed to create user');
+    const text = await res.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (e) {
+      throw new Error(`Invalid server response: ${text.substring(0, 100)}`);
     }
 
-    // Returns a pseudo-user object consistent with Firebase's format
+    if (!res.ok) {
+      throw new Error(data.error || `Server returned status ${res.status}`);
+    }
+
     return {
       user: {
         uid: data.$id,
@@ -81,6 +86,21 @@ export const createNewUser = async (email, password, name) => {
       }
     };
   } catch (error) {
-    throw error;
+    console.warn('Netlify function registration failed, attempting client-side fallback:', error.message);
+    
+    // 2. Fallback to client-side registration using Appwrite SDK
+    try {
+      const user = await account.create(ID.unique(), email, password, name);
+      return {
+        user: {
+          uid: user.$id,
+          email: user.email,
+          name: user.name
+        }
+      };
+    } catch (fallbackError) {
+      console.error('Client-side registration fallback also failed:', fallbackError);
+      throw new Error(fallbackError.message || 'Failed to create user account');
+    }
   }
 };

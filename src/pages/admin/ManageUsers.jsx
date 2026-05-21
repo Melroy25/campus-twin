@@ -8,7 +8,8 @@ import { toast } from 'react-hot-toast';
 import { MdAdd, MdDelete, MdPerson, MdClose, MdGroup, MdSearch, MdFileUpload, MdEdit, MdSave } from 'react-icons/md';
 import * as XLSX from 'xlsx';
 
-const ROLES = ['student', 'teacher', 'mentor', 'admin'];
+const ROLES = ['student', 'teacher', 'admin'];
+const DEPARTMENTS = ['CSE', 'ISE', 'ECE', 'EEE', 'ME', 'CE', 'AIDS', 'AIML'];
 
 export default function AdminManageUsers() {
   const { createUser } = useAuth();
@@ -18,6 +19,7 @@ export default function AdminManageUsers() {
     class_assignments: [],
     personalEmail: '',
     isHostelite: false,
+    department: 'CSE',
   });
   const [loading, setLoading] = useState(false);
   const [classes, setClasses] = useState([]);
@@ -36,6 +38,7 @@ export default function AdminManageUsers() {
 
   // For teacher multi-class entry
   const [assignRow, setAssignRow] = useState({ class_id: '', subject: '' });
+  const [editAssignRow, setEditAssignRow] = useState({ class_id: '', subject: '' });
 
   // For credentials email
   const [emailClassId, setEmailClassId] = useState('');
@@ -116,15 +119,42 @@ export default function AdminManageUsers() {
   }, []);
 
   const loadAllUsers = async () => {
-    const [students, teachers, admins] = await Promise.all([
+    const [students, teachers, admins, roles] = await Promise.all([
       getAll('students'),
       getAll('teachers'),
       getAll('admins'),
+      getAll('userRoles'),
     ]);
+    const roleMap = {};
+    roles.forEach((r) => {
+      roleMap[r.uid] = r.role;
+    });
+
+    const parsedTeachers = teachers.map((u) => {
+      let class_assignments = [];
+      if (u.class_assignments) {
+        if (typeof u.class_assignments === 'string') {
+          try {
+            class_assignments = JSON.parse(u.class_assignments);
+          } catch (e) {
+            class_assignments = [];
+          }
+        } else if (Array.isArray(u.class_assignments)) {
+          class_assignments = u.class_assignments;
+        }
+      }
+      return {
+        ...u,
+        class_assignments,
+        _collection: 'teachers',
+        role: roleMap[u.uid] || 'teacher',
+      };
+    });
+
     setAllUsers([
-      ...students.map((u) => ({ ...u, _collection: 'students' })),
-      ...teachers.map((u) => ({ ...u, _collection: 'teachers' })),
-      ...admins.map((u) => ({ ...u, _collection: 'admins' })),
+      ...students.map((u) => ({ ...u, _collection: 'students', role: roleMap[u.uid] || 'student' })),
+      ...parsedTeachers,
+      ...admins.map((u) => ({ ...u, _collection: 'admins', role: roleMap[u.uid] || 'admin' })),
     ]);
   };
 
@@ -165,11 +195,12 @@ export default function AdminManageUsers() {
         } : {}),
         ...(form.role === 'teacher' || form.role === 'mentor' ? {
           class_assignments: form.class_assignments,
+          department: form.role === 'teacher' ? (form.department || 'CSE') : undefined,
         } : {}),
       };
       await createUser(form.usn, form.password, profileData);
       toast.success(`${form.role} account created for ${form.name}!`);
-      setForm({ name: '', usn: '', password: '', role: 'student', class_id: '', mentor_id: '', class_assignments: [], personalEmail: '', isHostelite: false });
+      setForm({ name: '', usn: '', password: '', role: 'student', class_id: '', mentor_id: '', class_assignments: [], personalEmail: '', isHostelite: false, department: 'CSE' });
       setAssignRow({ class_id: '', subject: '' });
       loadAllUsers();
     } catch (err) {
@@ -183,19 +214,45 @@ export default function AdminManageUsers() {
     setEditForm({ ...user });
   };
 
+  const addEditAssignment = () => {
+    if (!editAssignRow.class_id || (editingUser?.role === 'teacher' && !editAssignRow.subject.trim())) {
+      return toast.error('Select class and enter subject');
+    }
+    const assignments = editForm.class_assignments || [];
+    const already = assignments.find((a) => a.class_id === editAssignRow.class_id && a.subject === editAssignRow.subject);
+    if (already) return toast.error('Already added');
+    setEditForm((prev) => ({
+      ...prev,
+      class_assignments: [...assignments, { ...editAssignRow }],
+    }));
+    setEditAssignRow({ class_id: '', subject: '' });
+  };
+
+  const removeEditAssignment = (idx) => {
+    setEditForm((prev) => ({
+      ...prev,
+      class_assignments: (prev.class_assignments || []).filter((_, i) => i !== idx),
+    }));
+  };
+
   const handleUpdate = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
       const classObj = classes.find((c) => c.id === editForm.class_id);
+      const isTeacherOrMentor = editingUser.role === 'teacher' || editingUser.role === 'mentor';
       const updateData = {
         name: editForm.name,
-        ...(editForm.role === 'student' ? {
+        ...(editingUser.role === 'student' ? {
           class_id: editForm.class_id,
           class_label: classObj?.label || editForm.class_id,
           mentor_id: editForm.mentor_id,
           personalEmail: editForm.personalEmail || '',
           isHostelite: editForm.isHostelite || false,
+        } : {}),
+        ...(isTeacherOrMentor ? {
+          class_assignments: JSON.stringify(editForm.class_assignments || []),
+          department: editForm.department || 'CSE',
         } : {}),
       };
       await updateDocument(editingUser._collection, editingUser.id, updateData);
@@ -213,6 +270,37 @@ export default function AdminManageUsers() {
           })
           .eq('id', editingUser.id);
         if (error) console.error('Failed to sync update to Supabase SQL:', error);
+      }
+
+      // Sync mentor assignments with classes collection
+      if (editingUser.role === 'mentor') {
+        const oldAssignments = editingUser.class_assignments || [];
+        const newAssignments = editForm.class_assignments || [];
+        const oldClassIds = oldAssignments.map(a => a.class_id).filter(Boolean);
+        const newClassIds = newAssignments.map(a => a.class_id).filter(Boolean);
+        
+        // Remove mentor from unassigned classes
+        for (const classId of oldClassIds) {
+          if (!newClassIds.includes(classId)) {
+            try {
+              const currentClass = classes.find(c => c.id === classId);
+              if (currentClass && (currentClass.mentor_id === editingUser.uid || currentClass.mentor_id === editingUser.id)) {
+                await updateDocument('classes', classId, { mentor_id: '' });
+              }
+            } catch (err) {
+              console.error(`Failed to clear mentor from class ${classId}:`, err);
+            }
+          }
+        }
+        
+        // Add mentor to new classes
+        for (const classId of newClassIds) {
+          try {
+            await updateDocument('classes', classId, { mentor_id: editingUser.uid || editingUser.id });
+          } catch (err) {
+            console.error(`Failed to assign mentor to class ${classId}:`, err);
+          }
+        }
       }
 
       toast.success('User updated successfully!');
@@ -235,6 +323,22 @@ export default function AdminManageUsers() {
           .delete()
           .eq('id', user.id);
         if (error) console.error('Failed to delete from Supabase SQL:', error);
+      }
+
+      if (user.role === 'mentor') {
+        const assignments = user.class_assignments || [];
+        for (const a of assignments) {
+          if (a.class_id) {
+            try {
+              const currentClass = classes.find(c => c.id === a.class_id);
+              if (currentClass && (currentClass.mentor_id === user.uid || currentClass.mentor_id === user.id)) {
+                await updateDocument('classes', a.class_id, { mentor_id: '' });
+              }
+            } catch (err) {
+              console.error(`Failed to clear mentor from class ${a.class_id}:`, err);
+            }
+          }
+        }
       }
 
       toast.success('User deleted from database');
@@ -307,7 +411,7 @@ export default function AdminManageUsers() {
     reader.readAsBinaryString(bulkFile);
   };
 
-  const mentors = allUsers.filter((u) => u.role === 'mentor');
+  const mentors = allUsers.filter((u) => u.role === 'teacher' || u.role === 'mentor');
   const filteredUsers = allUsers.filter((u) =>
     (u.name || '').toLowerCase().includes(search.toLowerCase()) ||
     (u.usn || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -392,9 +496,16 @@ export default function AdminManageUsers() {
 
               {/* Teacher / Mentor fields */}
               {(form.role === 'teacher' || form.role === 'mentor') && (
-                <div className="form-group">
-                  <label className="form-label">{form.role === 'teacher' ? 'Class & Subject Assignments' : 'Class Assignments'}</label>
-                  <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 12, marginBottom: 8 }}>
+                <>
+                  <div className="form-group">
+                    <label className="form-label">Department *</label>
+                    <select className="form-control" value={form.department || 'CSE'} onChange={(e) => setForm({ ...form, department: e.target.value })}>
+                      {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">{form.role === 'teacher' ? 'Class & Subject Assignments' : 'Class Assignments'}</label>
+                    <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 12, marginBottom: 8 }}>
                     {form.class_assignments.map((a, i) => (
                       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--primary-light)', borderRadius: 6, fontSize: '0.82rem', marginBottom: 6 }}>
                         <span style={{ flex: 1 }}><strong>{classes.find(c => c.id === a.class_id)?.label || a.class_id}</strong> {a.subject && `— ${a.subject}`}</span>
@@ -411,6 +522,7 @@ export default function AdminManageUsers() {
                     </div>
                   </div>
                 </div>
+              </>
               )}
 
               <button type="submit" className="btn btn-primary btn-block" disabled={loading}>{loading ? 'Creating...' : 'Create Account'}</button>
@@ -424,7 +536,7 @@ export default function AdminManageUsers() {
                 <div key={r} style={{ padding: 12, background: 'var(--surface-2)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem' }}>
                   <div className="flex-between"><span className="font-semibold">{r.charAt(0).toUpperCase() + r.slice(1)}</span><span className="badge badge-primary">{r}</span></div>
                   <div style={{ marginTop: 4, color: 'var(--text-muted)' }}>
-                    {r === 'student' ? 'Assigned to a class section and mentor' : r === 'teacher' ? 'Can mark attendance for assigned classes' : r === 'mentor' ? 'Can view and approve AICTE points' : 'Full system access'}
+                    {r === 'student' ? 'Assigned to a class section and mentor' : r === 'teacher' ? 'Can mark attendance, manage marks, and act as class advisor/mentor to approve AICTE points' : 'Full system access'}
                   </div>
                 </div>
               ))}
@@ -511,7 +623,10 @@ export default function AdminManageUsers() {
                   <tr key={u.id}>
                     <td className="font-semibold">{u.name}</td>
                     <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{u.usn}</td>
-                    <td><span className={`badge badge-${u.role === 'admin' ? 'absent' : u.role === 'teacher' ? 'primary' : u.role === 'mentor' ? 'pending' : 'approved'}`}>{u.role}</span></td>
+                    <td>
+                      <span className={`badge badge-${u.role === 'admin' ? 'absent' : u.role === 'teacher' ? 'primary' : u.role === 'mentor' ? 'pending' : 'approved'}`}>{u.role}</span>
+                      {u.department && <span className="badge badge-ghost" style={{ marginLeft: 6 }}>{u.department}</span>}
+                    </td>
                     <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                       {u.role === 'student' && (u.class_label || u.class_id || '—')}
                       {(u.role === 'teacher' || u.role === 'mentor') && (u.class_assignments?.length > 0 ? u.class_assignments.map((a, i) => <div key={i}>{classes.find(c => c.id === a.class_id)?.label || a.class_id} {a.subject ? `— ${a.subject}` : ''}</div>) : '—')}
@@ -660,12 +775,49 @@ export default function AdminManageUsers() {
                     </select>
                   </div>
                   <div className="form-group">
+                    <label className="form-label">Assign Mentor</label>
+                    <select className="form-control" value={editForm.mentor_id || ''} onChange={(e) => setEditForm({ ...editForm, mentor_id: e.target.value })}>
+                      <option value="">— Select Mentor —</option>
+                      {mentors.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.usn})</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group">
                     <label className="form-label">Personal Email</label>
                     <input type="email" className="form-control" value={editForm.personalEmail || ''} onChange={(e) => setEditForm({ ...editForm, personalEmail: e.target.value })} />
                   </div>
                   <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
                     <input type="checkbox" id="editIsHostelite" checked={editForm.isHostelite || false} onChange={(e) => setEditForm({ ...editForm, isHostelite: e.target.checked })} />
                     <label htmlFor="editIsHostelite" style={{ cursor: 'pointer', fontSize: '0.88rem' }}>Is Student Hostelite?</label>
+                  </div>
+                </>
+              )}
+
+              {(editingUser.role === 'teacher' || editingUser.role === 'mentor') && (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">Department *</label>
+                    <select className="form-control" value={editForm.department || 'CSE'} onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}>
+                      {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                      <label className="form-label">Class & Subject Assignments</label>
+                    <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 12, marginBottom: 8 }}>
+                      {(editForm.class_assignments || []).map((a, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--primary-light)', borderRadius: 6, fontSize: '0.82rem', marginBottom: 6 }}>
+                          <span style={{ flex: 1 }}><strong>{classes.find(c => c.id === a.class_id)?.label || a.class_id}</strong> {a.subject && `— ${a.subject}`}</span>
+                          <button type="button" className="btn btn-sm btn-danger" style={{ padding: '2px 6px' }} onClick={() => removeEditAssignment(i)}><MdClose /></button>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <select className="form-control" style={{ flex: 2, minWidth: 140 }} value={editAssignRow.class_id} onChange={(e) => setEditAssignRow({ ...editAssignRow, class_id: e.target.value })}>
+                          <option value="">Class…</option>
+                          {classes.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                        </select>
+                                                <input className="form-control" style={{ flex: 2, minWidth: 120 }} placeholder="Subject (optional)" value={editAssignRow.subject} onChange={(e) => setEditAssignRow({ ...editAssignRow, subject: e.target.value })} />
+                        <button type="button" className="btn btn-sm btn-primary" onClick={addEditAssignment}><MdAdd /> Add</button>
+                      </div>
+                    </div>
                   </div>
                 </>
               )}

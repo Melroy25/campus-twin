@@ -113,7 +113,6 @@ export default function Login() {
               <select className="form-control" value={role} onChange={(e) => setRole(e.target.value)} style={{ paddingLeft: 16 }}>
                 <option value="student">Student</option>
                 <option value="teacher">Teacher</option>
-                <option value="mentor">Mentor</option>
                 <option value="admin">Admin</option>
               </select>
             </div>

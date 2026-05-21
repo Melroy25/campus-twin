@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getClasses } from '../appwrite/database';
 import {
   MdDashboard, MdSchedule, MdCheckCircle, MdBarChart,
   MdStar, MdDescription, MdListAlt, MdEvent,
@@ -20,6 +22,7 @@ const NAV_ITEMS = {
     { label: 'Course Registration', icon: <MdListAlt />, path: '/student/courses' },
     { label: 'Events', icon: <MdEvent />, path: '/student/events' },
     { label: 'Complaint Box', icon: <MdInbox />, path: '/student/complaints' },
+    { label: 'Class Chat', icon: <MdGroup />, path: '/student/chat' },
   ],
   teacher: [
     { label: 'Home', icon: <MdHome />, path: '/teacher' },
@@ -27,12 +30,15 @@ const NAV_ITEMS = {
     { label: 'Add Marks', icon: <MdBarChart />, path: '/teacher/marks' },
     { label: 'Leave Requests', icon: <MdDescription />, path: '/teacher/leave' },
     { label: 'Complaint Box', icon: <MdInbox />, path: '/teacher/complaints' },
+    { label: 'Class Chat', icon: <MdGroup />, path: '/teacher/chat' },
   ],
   mentor: [
+    { label: 'Create Class', icon: <MdSchool />, path: '/mentor/classes' },
     { label: 'My Class', icon: <MdHome />, path: '/mentor' },
     { label: 'My Students', icon: <MdPeople />, path: '/mentor/students' },
     { label: 'AICTE Approvals', icon: <MdThumbUp />, path: '/mentor/aicte' },
     { label: 'Complaint Box', icon: <MdInbox />, path: '/mentor/complaints' },
+    { label: 'Class Chat', icon: <MdGroup />, path: '/mentor/chat' },
   ],
   admin: [
     { label: 'Dashboard', icon: <MdDashboard />, path: '/admin' },
@@ -42,6 +48,7 @@ const NAV_ITEMS = {
     { label: 'Upload Marks Cards', icon: <MdDescription />, path: '/admin/marks-cards' },
     { label: 'Post Events', icon: <MdEventNote />, path: '/admin/events' },
     { label: 'Complaint Box', icon: <MdInbox />, path: '/admin/complaints' },
+    { label: 'Class Chat', icon: <MdGroup />, path: '/admin/chat' },
   ],
 };
 
@@ -50,8 +57,38 @@ export default function Sidebar({ isOpen, onClose }) {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const [isMentor, setIsMentor] = useState(false);
+
+  useEffect(() => {
+    if (!userProfile || userProfile.role !== 'teacher') return;
+    const checkMentorStatus = async () => {
+      try {
+        const classesList = await getClasses();
+        const uid = userProfile.uid;
+        const matches = classesList.some(c => c.mentor_id === uid || c.advisor_id === uid);
+        setIsMentor(matches);
+      } catch (err) {
+        console.error("Failed to fetch classes in sidebar", err);
+      }
+    };
+    checkMentorStatus();
+  }, [userProfile]);
+
   const role = userProfile?.role || 'student';
-  const navItems = NAV_ITEMS[role] || [];
+  let navItems = NAV_ITEMS[role] || [];
+
+  if (role === 'teacher' && isMentor) {
+    const mentorItems = [
+      { label: 'Mentor Dashboard', icon: <MdDashboard />, path: '/mentor' },
+      { label: 'My Students', icon: <MdPeople />, path: '/mentor/students' },
+      { label: 'AICTE Approvals', icon: <MdThumbUp />, path: '/mentor/aicte' },
+    ];
+    navItems = [
+      ...navItems.slice(0, 4),
+      ...mentorItems,
+      ...navItems.slice(4)
+    ];
+  }
 
   const handleNav = (path) => {
     navigate(path);

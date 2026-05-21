@@ -24,7 +24,15 @@ export const where = (field, operator, value) => {
 export const getById = async (collectionId, documentId) => {
   try {
     const doc = await databases.getDocument(DATABASE_ID, collectionId, documentId);
-    return { ...doc, id: doc.$id };
+    const result = { ...doc, id: doc.$id };
+    if (collectionId === 'teachers' && typeof result.class_assignments === 'string') {
+      try {
+        result.class_assignments = JSON.parse(result.class_assignments);
+      } catch (e) {
+        result.class_assignments = [];
+      }
+    }
+    return result;
   } catch (error) {
     console.warn(`Doc not found/error in ${collectionId}/${documentId}`, error);
     return null;
@@ -39,7 +47,17 @@ export const getAll = async (collectionId) => {
     const response = await databases.listDocuments(DATABASE_ID, collectionId, [
         Query.limit(100)
     ]);
-    return response.documents.map(doc => ({ ...doc, id: doc.$id }));
+    return response.documents.map(doc => {
+      const result = { ...doc, id: doc.$id };
+      if (collectionId === 'teachers' && typeof result.class_assignments === 'string') {
+        try {
+          result.class_assignments = JSON.parse(result.class_assignments);
+        } catch (e) {
+          result.class_assignments = [];
+        }
+      }
+      return result;
+    });
   } catch (error) {
     console.error(`Error fetching all from ${collectionId}:`, error);
     return [];
@@ -58,7 +76,17 @@ export const queryDocuments = async (collectionId, queries = []) => {
         ...queries,
         Query.limit(100)
     ]);
-    return response.documents.map(doc => ({ ...doc, id: doc.$id }));
+    return response.documents.map(doc => {
+      const result = { ...doc, id: doc.$id };
+      if (collectionId === 'teachers' && typeof result.class_assignments === 'string') {
+        try {
+          result.class_assignments = JSON.parse(result.class_assignments);
+        } catch (e) {
+          result.class_assignments = [];
+        }
+      }
+      return result;
+    });
   } catch (error) {
     console.error(`Error querying ${collectionId}:`, error);
     return [];
@@ -122,11 +150,44 @@ export const deleteDocument = async (collectionId, documentId) => {
 
 // User / Auth mapping
 export const getUserProfile = async (uid) => {
-  // Try all roles tables
+  // 1. Try to get role from userRoles first
+  try {
+    const rolesDocs = await queryDocuments('userRoles', [Query.equal('uid', uid)]);
+    if (rolesDocs.length > 0) {
+      const role = rolesDocs[0].role;
+      const collection = role === 'student' ? 'students' : (role === 'teacher' || role === 'mentor') ? 'teachers' : 'admins';
+      const profiles = await queryDocuments(collection, [Query.equal('uid', uid)]);
+      if (profiles.length > 0) {
+        const profile = { ...profiles[0], id: profiles[0].$id, role };
+        if (profile.class_assignments && typeof profile.class_assignments === 'string') {
+          try {
+            profile.class_assignments = JSON.parse(profile.class_assignments);
+          } catch (e) {
+            profile.class_assignments = [];
+          }
+        }
+        return profile;
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to query userRoles collection:", err);
+  }
+
+  // 2. Fallback to trying all roles tables (backward compatibility)
   for (const table of ['students', 'teachers', 'admins']) {
     try {
       const users = await queryDocuments(table, [Query.equal('uid', uid)]);
-      if (users.length > 0) return { ...users[0], id: users[0].$id, role: table.slice(0, -1) };
+      if (users.length > 0) {
+        const profile = { ...users[0], id: users[0].$id, role: table.slice(0, -1) };
+        if (profile.class_assignments && typeof profile.class_assignments === 'string') {
+          try {
+            profile.class_assignments = JSON.parse(profile.class_assignments);
+          } catch (e) {
+            profile.class_assignments = [];
+          }
+        }
+        return profile;
+      }
     } catch {}
   }
   return null;
@@ -234,8 +295,65 @@ export const listenNotifications = (userId, cb) => {
   return client.subscribe(`databases.${DATABASE_ID}.collections.notifications.documents`, () => queryDocuments('notifications', [Query.equal('user_id', userId)]).then(cb));
 };
 export const markNotificationRead = async (id) => updateDocument('notifications', id, { read_status: true });
-export const addNotification = async (data) => addDocument('notifications', { ...data, read_status: false, createdAt: new Date().toISOString() });
-export const addChangeLog = async (data) => addDocument('changelogs', { ...data, createdAt: new Date().toISOString() });
+
+export const addNotification = async (userIdOrData, message) => {
+  if (typeof userIdOrData === 'object' && userIdOrData !== null) {
+    return await addDocument('notifications', { ...userIdOrData, read_status: false, createdAt: new Date().toISOString() });
+  } else {
+    return await addDocument('notifications', { user_id: userIdOrData, message, read_status: false, createdAt: new Date().toISOString() });
+  }
+};
+
+export const addChangeLog = async (timetableIdOrData, action, details, changedBy) => {
+  if (typeof timetableIdOrData === 'object' && timetableIdOrData !== null) {
+    return await addDocument('changelogs', { ...timetableIdOrData, createdAt: new Date().toISOString() });
+  } else {
+    return await addDocument('changelogs', {
+      timetable_id: timetableIdOrData,
+      action,
+      details,
+      changed_by: changedBy,
+      createdAt: new Date().toISOString()
+    });
+  }
+};
+
+// Event Registrations
+export const registerForEvent = async (eventId, studentId, studentName, studentUsn) => {
+  return await addDocument('event_registrations', {
+    event_id: eventId,
+    student_id: studentId,
+    student_name: studentName,
+    student_usn: studentUsn,
+    registeredAt: new Date().toISOString()
+  });
+};
+
+export const unregisterFromEvent = async (eventIdOrRegistrationId, studentId) => {
+  if (studentId) {
+    const regs = await queryDocuments('event_registrations', [
+      Query.equal('event_id', eventIdOrRegistrationId),
+      Query.equal('student_id', studentId)
+    ]);
+    if (regs.length > 0) {
+      for (const reg of regs) {
+        await deleteDocument('event_registrations', reg.$id);
+      }
+    }
+  } else {
+    return await deleteDocument('event_registrations', eventIdOrRegistrationId);
+  }
+};
+
+export const getEventRegistrations = async (eventId) => {
+  return await queryDocuments('event_registrations', [Query.equal('event_id', eventId)]);
+};
+
+export const getMyEventRegistrations = async (studentId) => {
+  return await queryDocuments('event_registrations', [Query.equal('student_id', studentId)]);
+};
+
+export const getEventRegistrationsByStudent = getMyEventRegistrations;
 
 
 // Classes
@@ -245,4 +363,5 @@ export const deleteClass = async (id) => deleteDocument('classes', id);
 
 // Leave
 export const getPendingLeaveRequests = async () => queryDocuments('leaveRequests', [Query.equal('status', 'pending')]);
+
 

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { loginUser, logoutUser, getCurrentUser, createNewUser } from '../appwrite/auth';
-import { getUserProfile, addDocumentWithId } from '../appwrite/database';
+import { getUserProfile, addDocumentWithId, updateDocument } from '../appwrite/database';
 import { supabase } from '../supabase/config';
 
 const AuthContext = createContext(null);
@@ -64,9 +64,27 @@ export const AuthProvider = ({ children }) => {
 
   const createUser = async (usn, password, profileData) => {
     const email = usnToEmail(usn);
-    // Note: This relies on the Netlify lambda function to avoid logging out the admin
-    const result = await createNewUser(email, password, profileData.name || usn);
-    const uid = result.user.uid;
+    // Attempt to create the auth user; if it already exists, fetch the existing uid.
+    let result;
+    let uid;
+    try {
+      result = await createNewUser(email, password, profileData.name || usn);
+      uid = result.user.uid;
+    } catch (err) {
+      if (err.code === 'auth/user-already-exists' || err.message?.includes('already exists')) {
+        // Try to log in to retrieve uid (admin may know password)
+        const loginRes = await loginUser(email, password).catch(() => null);
+        if (loginRes && loginRes.user) {
+          uid = loginRes.user.uid;
+          result = loginRes;
+        } else {
+          console.error('Unable to obtain UID for existing user', email);
+          throw err;
+        }
+      } else {
+        throw err;
+      }
+    }
 
     const collectionName =
       profileData.role === 'student' ? 'students' :
@@ -74,55 +92,71 @@ export const AuthProvider = ({ children }) => {
       profileData.role === 'mentor' ? 'teachers' :
       'admins';
 
+    const now = new Date().toISOString();
     const docData = {
       ...profileData,
       usn,
       email,
       uid,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
     };
-    
-    // Remove SQL-only and schema-unsupported fields before saving to Appwrite NoSQL collection
+
+    // Clean up fields not suitable for Appwrite collections
     delete docData.personalEmail;
     delete docData.isHostelite;
     delete docData.role;
-    
+    // Preserve createdAt for student collection (required by schema)
+    if (profileData.role !== 'student') delete docData.usn;
     delete docData.class_assignments;
     if (profileData.role === 'teacher' || profileData.role === 'mentor') {
-      docData.class_assignments = profileData.class_assignments || [];
+      docData.class_assignments = JSON.stringify(profileData.class_assignments || []);
     }
 
-    // Ensure documents get created matching Auth User ID
     await addDocumentWithId(collectionName, uid, docData);
-    
-    try {
-      await addDocumentWithId('userRoles', uid, {
-        role: profileData.role,
-        usn,
-        uid,
-      });
-    } catch (roleErr) {
-      console.warn('Failed to sync to userRoles collection in Appwrite (ignoring):', roleErr.message);
+
+    // Sync role and timestamp to userRoles collection
+    await addDocumentWithId('userRoles', uid, {
+      name: profileData.name || usn,
+      role: profileData.role,
+      usn,
+      uid,
+      createdAt: now,
+    });
+
+    // If mentor, update the mentor_id on the assigned classes
+    if (profileData.role === 'mentor' && profileData.class_assignments?.length > 0) {
+      for (const assignment of profileData.class_assignments) {
+        if (assignment.class_id) {
+          try {
+            await updateDocument('classes', assignment.class_id, { mentor_id: uid });
+          } catch (e) {
+            console.error(`Failed to assign mentor to class ${assignment.class_id}:`, e);
+          }
+        }
+      }
     }
 
-    // Sync to Supabase Postgres (SQL) if role is student
+    // Sync to Supabase if student (upsert to avoid duplicate errors)
     if (profileData.role === 'student') {
-      const { error } = await supabase.from('student_profiles').insert([{
-        id: uid,
-        name: profileData.name,
-        usn: usn,
-        email: profileData.personalEmail || null,
-        class_id: profileData.class_id || null,
-        class_label: profileData.class_label || null,
-        mentor_id: profileData.mentor_id || null,
-        is_hostelite: profileData.isHostelite || false,
-      }]);
+      const { error } = await supabase.from('student_profiles').upsert([
+        {
+          id: uid,
+          name: profileData.name,
+          usn,
+          email: profileData.personalEmail || null,
+          class_id: profileData.class_id || null,
+          class_label: profileData.class_label || null,
+          mentor_id: profileData.mentor_id || null,
+          is_hostelite: profileData.isHostelite || false,
+          created_at: now,
+        },
+      ]);
       if (error) {
         console.error('Failed to sync to Supabase SQL:', error);
         throw error;
       }
     }
-    
+
     return result;
   };
 

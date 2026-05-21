@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
 import { listenEvents, getAttendanceByStudent, getAttendanceSummary, getAICTEByStudent } from '../../appwrite/database';
@@ -11,12 +12,34 @@ export default function StudentHome() {
   const [events, setEvents] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [aicteTotal, setAicteTotal] = useState(0);
+  const navigate = useNavigate();
   
   // To-Do list states
   const [todos, setTodos] = useState([]);
   const [newTodo, setNewTodo] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [priority, setPriority] = useState('medium');
   const [todoLoading, setTodoLoading] = useState(false);
+
+  const parseTodoTitle = (rawTitle) => {
+    try {
+      if (rawTitle.startsWith('{') && rawTitle.endsWith('}')) {
+        const parsed = JSON.parse(rawTitle);
+        if (parsed.text) {
+          return {
+            text: parsed.text,
+            priority: parsed.priority || 'medium'
+          };
+        }
+      }
+    } catch (e) {
+      // ignore parsing error, treat as legacy
+    }
+    return {
+      text: rawTitle,
+      priority: 'medium'
+    };
+  };
 
   useEffect(() => {
     const unsub = listenEvents(setEvents);
@@ -94,11 +117,12 @@ export default function StudentHome() {
     setTodoLoading(true);
 
     try {
+      const serializedTitle = JSON.stringify({ text: newTodo.trim(), priority });
       const { data, error } = await supabase
         .from('todos')
         .insert([{
           student_id: currentUser.uid,
-          title: newTodo.trim(),
+          title: serializedTitle,
           due_date: dueDate || null,
           is_completed: false
         }])
@@ -109,6 +133,7 @@ export default function StudentHome() {
       toast.success('Task added!');
       setNewTodo('');
       setDueDate('');
+      setPriority('medium');
       fetchTodos();
     } catch (err) {
       toast.error('Failed to add task: ' + err.message);
@@ -218,9 +243,9 @@ export default function StudentHome() {
           <div className="card">
             <div className="flex-between mb-16">
               <h3>📢 Announcements & Events</h3>
-              <a href="/student/events" style={{ fontSize: '0.82rem', color: 'var(--primary)', fontWeight: 500 }}>
+              <Link to="/student/events" style={{ fontSize: '0.82rem', color: 'var(--primary)', fontWeight: 500 }}>
                 View all →
-              </a>
+              </Link>
             </div>
 
             {events.length === 0 ? (
@@ -264,29 +289,43 @@ export default function StudentHome() {
             </div>
 
             {/* Quick Add Form */}
-            <form onSubmit={handleAddTodo} style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-              <input 
-                className="form-control"
-                style={{ flex: 3 }}
-                placeholder="New task..."
-                value={newTodo}
-                onChange={(e) => setNewTodo(e.target.value)}
-              />
-              <input 
-                type="date"
-                className="form-control"
-                style={{ flex: 2, minWidth: 110 }}
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-              />
-              <button 
-                type="submit" 
-                className="btn btn-primary btn-sm"
-                disabled={todoLoading}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 42 }}
-              >
-                <MdAdd size={20} />
-              </button>
+            <form onSubmit={handleAddTodo} style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input 
+                  className="form-control"
+                  style={{ flex: 1 }}
+                  placeholder="New task..."
+                  value={newTodo}
+                  onChange={(e) => setNewTodo(e.target.value)}
+                />
+                <button 
+                  type="submit" 
+                  className="btn btn-primary btn-sm"
+                  disabled={todoLoading}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 42 }}
+                >
+                  <MdAdd size={20} />
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input 
+                  type="date"
+                  className="form-control"
+                  style={{ flex: 1 }}
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                />
+                <select
+                  className="form-control"
+                  style={{ flex: 1 }}
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                >
+                  <option value="high">🔥 High</option>
+                  <option value="medium">⚡ Medium</option>
+                  <option value="low">💤 Low</option>
+                </select>
+              </div>
             </form>
 
             {/* Tasks List */}
@@ -296,64 +335,90 @@ export default function StudentHome() {
                 <p>No tasks yet. Add one above!</p>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto', paddingRight: 4 }}>
-                {todos.map((todo) => {
-                  const overdue = isOverdue(todo.due_date, todo.is_completed);
-                  return (
-                    <div 
-                      key={todo.id} 
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: '10px 12px',
-                        background: todo.is_completed ? 'var(--surface-2)' : 'var(--surface-1)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 'var(--radius-sm)',
-                        transition: 'opacity 0.2s',
-                        opacity: todo.is_completed ? 0.6 : 1
-                      }}
-                    >
-                      <button 
-                        type="button" 
-                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: todo.is_completed ? 'var(--success)' : 'var(--text-muted)' }}
-                        onClick={() => handleToggleTodo(todo.id, todo.is_completed)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 320, overflowY: 'auto', paddingRight: 4 }}>
+                {[...todos]
+                  .map(todo => ({ ...todo, _parsed: parseTodoTitle(todo.title) }))
+                  .sort((a, b) => {
+                    if (a.is_completed !== b.is_completed) return a.is_completed ? 1 : -1;
+                    const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
+                    const pa = PRIORITY_ORDER[a._parsed.priority] ?? 1;
+                    const pb = PRIORITY_ORDER[b._parsed.priority] ?? 1;
+                    if (pa !== pb) return pa - pb;
+                    return (a.due_date || '') < (b.due_date || '') ? -1 : 1;
+                  })
+                  .map((todo) => {
+                    const overdue = isOverdue(todo.due_date, todo.is_completed);
+                    const pInfo = todo._parsed;
+                    const PRIORITY_STYLES = {
+                      high: { bg: 'rgba(239,68,68,0.12)', color: '#ef4444', label: '🔥' },
+                      medium: { bg: 'rgba(234,179,8,0.12)', color: '#ca8a04', label: '⚡' },
+                      low: { bg: 'rgba(100,116,139,0.12)', color: '#64748b', label: '💤' },
+                    };
+                    const pStyle = PRIORITY_STYLES[pInfo.priority] || PRIORITY_STYLES.medium;
+                    return (
+                      <div 
+                        key={todo.id} 
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '10px 12px',
+                          background: todo.is_completed ? 'var(--surface-2)' : 'var(--surface-1)',
+                          border: overdue && !todo.is_completed ? '1px solid rgba(239,68,68,0.4)' : '1px solid var(--border)',
+                          borderRadius: 'var(--radius-sm)',
+                          transition: 'opacity 0.2s',
+                          opacity: todo.is_completed ? 0.55 : 1
+                        }}
                       >
-                        {todo.is_completed ? <MdCheckBox size={20} /> : <MdCheckBoxOutlineBlank size={20} />}
-                      </button>
-                      <div style={{ flex: 1 }}>
-                        <span style={{ 
-                          fontSize: '0.88rem', 
-                          fontWeight: 500,
-                          textDecoration: todo.is_completed ? 'line-through' : 'none',
-                          color: todo.is_completed ? 'var(--text-muted)' : 'var(--text)'
-                        }}>
-                          {todo.title}
-                        </span>
-                        {todo.due_date && (
-                          <div style={{ 
-                            fontSize: '0.72rem', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: 4, 
-                            marginTop: 2,
-                            color: overdue ? 'var(--danger)' : 'var(--text-muted)'
-                          }}>
-                            <MdCalendarToday size={12} />
-                            <span>{formatTodoDate(todo.due_date)} {overdue && '(Overdue)'}</span>
+                        <button 
+                          type="button" 
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: todo.is_completed ? 'var(--success)' : 'var(--text-muted)', flexShrink: 0 }}
+                          onClick={() => handleToggleTodo(todo.id, todo.is_completed)}
+                        >
+                          {todo.is_completed ? <MdCheckBox size={20} /> : <MdCheckBoxOutlineBlank size={20} />}
+                        </button>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span style={{
+                              fontSize: '0.88rem', 
+                              fontWeight: 500,
+                              textDecoration: todo.is_completed ? 'line-through' : 'none',
+                              color: todo.is_completed ? 'var(--text-muted)' : 'var(--text)'
+                            }}>
+                              {pInfo.text}
+                            </span>
+                            <span style={{
+                              fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4,
+                              background: pStyle.bg, color: pStyle.color, fontWeight: 600,
+                              flexShrink: 0
+                            }}>
+                              {pStyle.label} {pInfo.priority}
+                            </span>
                           </div>
-                        )}
+                          {todo.due_date && (
+                            <div style={{ 
+                              fontSize: '0.72rem', 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: 4, 
+                              marginTop: 2,
+                              color: overdue && !todo.is_completed ? 'var(--danger)' : 'var(--text-muted)'
+                            }}>
+                              <MdCalendarToday size={12} />
+                              <span>{formatTodoDate(todo.due_date)}{overdue && !todo.is_completed ? ' ⚠️ Overdue' : ''}</span>
+                            </div>
+                          )}
+                        </div>
+                        <button 
+                          type="button" 
+                          style={{ background: 'none', border: 'none', padding: 4, cursor: 'pointer', color: 'var(--danger)', opacity: 0.7, flexShrink: 0 }}
+                          onClick={() => handleDeleteTodo(todo.id)}
+                        >
+                          <MdDelete size={16} />
+                        </button>
                       </div>
-                      <button 
-                        type="button" 
-                        style={{ background: 'none', border: 'none', padding: 4, cursor: 'pointer', color: 'var(--danger)', opacity: 0.7 }}
-                        onClick={() => handleDeleteTodo(todo.id)}
-                      >
-                        <MdDelete size={16} />
-                      </button>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             )}
           </div>
@@ -369,7 +434,7 @@ export default function StudentHome() {
             gap: 20,
             cursor: 'pointer',
             border: 'none'
-          }} onClick={() => window.location.href = '/student/complaints'}>
+          }} onClick={() => navigate('/student/complaints')}>
             <div style={{ 
               width: 50, height: 50, borderRadius: '12px', background: 'rgba(255,255,255,0.1)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem'

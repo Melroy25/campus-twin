@@ -40,7 +40,7 @@ export default function AdminDashboard() {
 
   const quickActions = [
     { label: 'Manage Classes', path: '/admin/classes', icon: <MdSchool />, desc: 'Create branches, years and sections' },
-    { label: 'Manage Users', path: '/admin/users', icon: <MdGroup />, desc: 'Create student, teacher, mentor accounts' },
+    { label: 'Manage Users', path: '/admin/users', icon: <MdGroup />, desc: 'Create student, teacher, and admin accounts' },
     { label: 'Manage Timetable', path: '/admin/timetable', icon: <MdSchedule />, desc: 'Edit timetable and class schedules' },
     { label: 'Post Events', path: '/admin/events', icon: <MdEvent />, desc: 'Share announcements and upcoming events' },
     { label: 'Complaint Box', path: '/admin/complaints', icon: <MdInbox />, desc: 'Review and resolve anonymous complaints' },
