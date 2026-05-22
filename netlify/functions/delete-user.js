@@ -4,7 +4,6 @@ exports.handler = async (event, context) => {
   }
 
   // The Appwrite Server API Key must be set in Netlify Environment Variables
-  // Go to Netlify -> Site Settings -> Environment Variables -> Add VITE_APPWRITE_API_KEY
   const apiKey = process.env.VITE_APPWRITE_API_KEY || process.env.APPWRITE_API_KEY;
 
   if (!apiKey) {
@@ -15,35 +14,38 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    const { email, password, name, endpoint, projectId } = JSON.parse(event.body);
+    const { uid, endpoint, projectId } = JSON.parse(event.body);
 
-    const res = await fetch(`${endpoint}/users`, {
-      method: 'POST',
+    if (!uid) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'UID is required.' })
+      };
+    }
+
+    const res = await fetch(`${endpoint}/users/${uid}`, {
+      method: 'DELETE',
       headers: {
-        'Content-Type': 'application/json',
         'X-Appwrite-Project': projectId,
         'X-Appwrite-Key': apiKey,
-      },
-      body: JSON.stringify({
-        userId: 'unique()',
-        email,
-        password,
-        name
-      })
+      }
     });
 
-    const data = await res.json();
-    
     if (!res.ok) {
+      const text = await res.text();
+      let data = {};
+      try {
+        data = JSON.parse(text);
+      } catch (e) {}
       return {
         statusCode: res.status,
-        body: JSON.stringify({ error: data.message || 'Failed to create user in Appwrite.' })
+        body: JSON.stringify({ error: data.message || 'Failed to delete user in Appwrite Auth.' })
       };
     }
 
     return {
       statusCode: 200,
-      body: JSON.stringify(data),
+      body: JSON.stringify({ success: true, message: `User ${uid} successfully deleted from authentication.` }),
     };
   } catch (error) {
     return {

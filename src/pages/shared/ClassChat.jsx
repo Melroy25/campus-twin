@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
-import { client, DATABASE_ID } from '../../appwrite/config';
+import { client, DATABASE_ID, PROJECT_ID, ENDPOINT } from '../../appwrite/config';
 import { queryDocuments, getById, addDocument, updateDocument, getAll, where } from '../../appwrite/database';
 import { uploadFile } from '../../appwrite/storage';
 import { toast } from 'react-hot-toast';
@@ -186,11 +186,41 @@ export default function ClassChat() {
   const handleDeleteMessage = async (msgId) => {
     if (!confirm("Are you sure you want to delete this message?")) return;
     try {
-      await deleteDocument('class_messages', msgId);
+      // 1. Try secure server-side deletion using Netlify serverless function
+      try {
+        const res = await fetch('/.netlify/functions/delete-chat-message', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            messageId: msgId,
+            requesterUid: currentUser.uid,
+            endpoint: ENDPOINT,
+            projectId: PROJECT_ID,
+            databaseId: DATABASE_ID
+          })
+        });
+
+        const text = await res.text();
+        let data = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch (e) {}
+
+        if (!res.ok) {
+          throw new Error(data.error || `Server returned status ${res.status}`);
+        }
+      } catch (serverErr) {
+        console.warn("Serverless deletion failed, trying client-side SDK fallback:", serverErr);
+        // 2. Client-side SDK fallback (may fail if permissions are not set, but keeps it working locally)
+        await deleteDocument('class_messages', msgId);
+      }
+
       toast.success("Message deleted");
-      setMessages(prev => prev.filter(m => m.$id !== msgId));
+      setMessages(prev => prev.filter(m => m.$id !== msgId && m.id !== msgId));
     } catch (err) {
-      toast.error("Failed to delete message");
+      toast.error(err.message || "Failed to delete message");
       console.error(err);
     }
   };

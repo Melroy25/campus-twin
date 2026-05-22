@@ -104,3 +104,40 @@ export const createNewUser = async (email, password, name) => {
     }
   }
 };
+
+/**
+ * Delete a user account from authentication using a Netlify serverless function
+ */
+export const deleteUserFromAuth = async (uid) => {
+  try {
+    const res = await fetch('/.netlify/functions/delete-user', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        uid,
+        endpoint: ENDPOINT,
+        projectId: PROJECT_ID,
+      }),
+    });
+
+    const text = await res.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (e) {
+      throw new Error(`Invalid server response: ${text.substring(0, 100)}`);
+    }
+
+    if (!res.ok) {
+      throw new Error(data.error || `Server returned status ${res.status}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Failed to delete user from authentication:', error.message);
+    throw error;
+  }
+};
+

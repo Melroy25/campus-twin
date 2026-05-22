@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
+import { deleteUserFromAuth } from '../../appwrite/auth';
 import { listenClasses, queryDocuments, deleteDocument, getAll, updateDocument } from '../../appwrite/database';
 import { supabase } from '../../supabase/config';
 import { sendCredentialsEmail } from '../../utils/email';
@@ -314,6 +315,7 @@ export default function AdminManageUsers() {
   const handleDeleteUser = async (user) => {
     if (!window.confirm(`Delete user "${user.name}" (${user.usn})?`)) return;
     try {
+      // 1. Delete database documents
       await deleteDocument(user._collection, user.id);
       await deleteDocument('userRoles', user.id);
       
@@ -341,7 +343,15 @@ export default function AdminManageUsers() {
         }
       }
 
-      toast.success('User deleted from database');
+      // 2. Delete Auth account using Netlify serverless cleanup function
+      try {
+        await deleteUserFromAuth(user.id || user.uid);
+        toast.success('User successfully deleted from database & auth!');
+      } catch (authErr) {
+        console.warn('Auth cleanup failed, database record was deleted:', authErr);
+        toast.success('User deleted from database (auth account needs direct console cleanup).');
+      }
+
       loadAllUsers();
     } catch (err) {
       toast.error('Failed to delete user');
