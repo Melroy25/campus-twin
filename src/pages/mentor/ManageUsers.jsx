@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
-import { listenClasses, deleteDocument, getAll, updateDocument } from '../../appwrite/database';
+import { listenClasses, deleteDocument, getAll, updateDocument, queryDocuments } from '../../appwrite/database';
 import { supabase } from '../../supabase/config';
 import { toast } from 'react-hot-toast';
 import { MdAdd, MdDelete, MdPerson, MdClose, MdGroup, MdSearch, MdFileUpload, MdEdit, MdSave } from 'react-icons/md';
+import { Query } from 'appwrite';
 import * as XLSX from 'xlsx';
 
 const ROLES = ['student', 'teacher', 'mentor'];
@@ -17,6 +18,8 @@ export default function MentorManageUsers() {
     class_assignments: [],
     personalEmail: '',
     isHostelite: false,
+    hostel_type: '',
+    phone: '',
   });
   const [loading, setLoading] = useState(false);
   const [classes, setClasses] = useState([]);
@@ -51,13 +54,34 @@ export default function MentorManageUsers() {
         getAll('userRoles'),
       ]);
       const roleMap = {};
+      const usnMap = {};
+      const phoneMap = {};
+      const emailMap = {};
       roles.forEach((r) => {
         roleMap[r.uid] = r.role;
+        usnMap[r.uid] = r.usn;
+        phoneMap[r.uid] = r.phone || '';
+        emailMap[r.uid] = r.email || '';
       });
 
       // Filter out admins so mentors only manage teachers/mentors/students
-      const filteredStudents = students.map((u) => ({ ...u, _collection: 'students', role: roleMap[u.uid] || 'student' }));
-      const filteredTeachers = teachers.map((u) => ({ ...u, _collection: 'teachers', role: roleMap[u.uid] || (u.class_assignments ? 'teacher' : 'mentor') }));
+      const filteredStudents = students.map((u) => ({
+        ...u,
+        isHostelite: u.hostel_type === 'boys' || u.hostel_type === 'girls',
+        _collection: 'students',
+        role: roleMap[u.uid] || 'student',
+        usn: u.usn || usnMap[u.uid] || '—',
+        phone: phoneMap[u.uid] || '',
+        personalEmail: emailMap[u.uid] || '',
+      }));
+      const filteredTeachers = teachers.map((u) => ({
+        ...u,
+        _collection: 'teachers',
+        role: roleMap[u.uid] || (u.class_assignments ? 'teacher' : 'mentor'),
+        usn: usnMap[u.uid] || '—',
+        phone: phoneMap[u.uid] || '',
+        personalEmail: emailMap[u.uid] || '',
+      }));
 
       setAllUsers([
         ...filteredStudents,
@@ -99,12 +123,16 @@ export default function MentorManageUsers() {
       const profileData = {
         name: form.name,
         role: form.role,
+        phone: form.phone || '',
+        personalEmail: form.personalEmail || '',
         ...(form.role === 'student' ? {
           class_id: form.class_id,
           class_label: classObj?.label || form.class_id,
           mentor_id: form.mentor_id || currentUser.uid, // Default to current mentor
           personalEmail: form.personalEmail,
           isHostelite: form.isHostelite,
+          hostel_type: form.hostel_type || '',
+          gender: form.hostel_type === 'boys' ? 'male' : form.hostel_type === 'girls' ? 'female' : 'male',
         } : {}),
         ...(form.role === 'teacher' || form.role === 'mentor' ? {
           class_assignments: form.class_assignments,
@@ -112,7 +140,7 @@ export default function MentorManageUsers() {
       };
       await createUser(form.usn, form.password, profileData);
       toast.success(`${form.role} account created for ${form.name}!`);
-      setForm({ name: '', usn: '', password: '', role: 'student', class_id: '', mentor_id: '', class_assignments: [], personalEmail: '', isHostelite: false });
+      setForm({ name: '', usn: '', password: '', role: 'student', class_id: '', mentor_id: '', class_assignments: [], personalEmail: '', isHostelite: false, hostel_type: '', phone: '' });
       setAssignRow({ class_id: '', subject: '' });
       loadAllUsers();
     } catch (err) {
@@ -137,11 +165,27 @@ export default function MentorManageUsers() {
           class_id: editForm.class_id,
           class_label: classObj?.label || editForm.class_id,
           mentor_id: editForm.mentor_id || currentUser.uid,
-          personalEmail: editForm.personalEmail || '',
-          isHostelite: editForm.isHostelite || false,
+          hostel_type: editForm.hostel_type || '',
+          gender: editForm.hostel_type === 'boys' ? 'male' : editForm.hostel_type === 'girls' ? 'female' : (editForm.gender || 'male'),
         } : {}),
       };
       await updateDocument(editingUser._collection, editingUser.id, updateData);
+      
+      // Sync user details to central userRoles collection
+      const rolesDocs = await queryDocuments('userRoles', [Query.equal('uid', editingUser.uid || editingUser.id)]);
+      if (rolesDocs.length > 0) {
+        await updateDocument('userRoles', rolesDocs[0].$id, {
+          name: editForm.name,
+          phone: editForm.phone || '',
+          email: editForm.personalEmail || '',
+        });
+      } else {
+        await updateDocument('userRoles', editingUser.id, {
+          name: editForm.name,
+          phone: editForm.phone || '',
+          email: editForm.personalEmail || '',
+        });
+      }
       
       if (editingUser.role === 'student') {
         const { error } = await supabase
@@ -170,7 +214,12 @@ export default function MentorManageUsers() {
     if (!window.confirm(`Delete user "${user.name}" (${user.usn})?`)) return;
     try {
       await deleteDocument(user._collection, user.id);
-      await deleteDocument('userRoles', user.id);
+      const rolesDocs = await queryDocuments('userRoles', [Query.equal('uid', user.uid || user.id)]);
+      if (rolesDocs.length > 0) {
+        await deleteDocument('userRoles', rolesDocs[0].$id);
+      } else {
+        await deleteDocument('userRoles', user.id).catch(() => {});
+      }
       
       if (user.role === 'student') {
         const { error } = await supabase
@@ -210,14 +259,26 @@ export default function MentorManageUsers() {
           const row = data[i];
           const name = row.Name || row.name || row.NAME;
           const usn = row.usn || row.USN || row.Usn;
-          const password = String(row.password || row.PASSWORD || '123456');
+          const password = String(row.password || row.PASSWORD || row.Password || 'CampusTwin123');
           const emailVal = row.email || row.Email || row.EMAIL || '';
+          const phoneVal = String(row.phone || row.Phone || row.PHONE || row.mobile || row.Mobile || row.MOBILE || '').trim();
           
+          // Parse hostelite column — accepts "boys", "girls", "yes"/"true" (defaults to boys), or "no"/"none"
           let hosteliteVal = false;
+          let hostelType = '';
           const hosteliteKey = Object.keys(row).find(k => k.toLowerCase() === 'hostelite');
           if (hosteliteKey) {
             const h = String(row[hosteliteKey]).toLowerCase().trim();
-            hosteliteVal = h === 'true' || h === 'yes' || h === '1' || row[hosteliteKey] === true;
+            if (h === 'boys' || h === 'boy') {
+              hosteliteVal = true;
+              hostelType = 'boys';
+            } else if (h === 'girls' || h === 'girl') {
+              hosteliteVal = true;
+              hostelType = 'girls';
+            } else if (h === 'true' || h === 'yes' || h === '1') {
+              hosteliteVal = true;
+              hostelType = 'boys'; // default to boys if just "yes"
+            }
           }
           
           if (!name || !usn) {
@@ -234,8 +295,13 @@ export default function MentorManageUsers() {
               mentor_id: currentUser.uid,
               personalEmail: emailVal,
               isHostelite: hosteliteVal,
+              hostel_type: hostelType,
+              gender: hostelType === 'boys' ? 'male' : hostelType === 'girls' ? 'female' : 'male',
+              phone: phoneVal,
+              must_change_password: true,
             });
-            setBulkStatus(prev => ({ ...prev, current: i + 1, logs: [...prev.logs, `✅ ${name} (${usn}) created`] }));
+            const hostelTag = hostelType ? ` [${hostelType} hostel]` : '';
+            setBulkStatus(prev => ({ ...prev, current: i + 1, logs: [...prev.logs, `✅ ${name} (${usn}) created${hostelTag}`] }));
           } catch (err) {
             setBulkStatus(prev => ({ ...prev, current: i + 1, logs: [...prev.logs, `❌ ${name}: ${err.message}`] }));
           }
@@ -299,6 +365,14 @@ export default function MentorManageUsers() {
                 <input type="password" className="form-control" placeholder="Min 6 characters" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
               </div>
               <div className="form-group">
+                <label className="form-label">Phone Number *</label>
+                <input className="form-control" placeholder="e.g. +91 9988776655" value={form.phone || ''} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Personal Email</label>
+                <input type="email" className="form-control" placeholder="student@example.com" value={form.personalEmail} onChange={(e) => setForm({ ...form, personalEmail: e.target.value })} />
+              </div>
+              <div className="form-group">
                 <label className="form-label">Role *</label>
                 <select className="form-control" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
                   {ROLES.map((r) => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
@@ -322,13 +396,24 @@ export default function MentorManageUsers() {
                       {mentors.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.usn})</option>)}
                     </select>
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Personal Email</label>
-                    <input type="email" className="form-control" placeholder="student@example.com" value={form.personalEmail} onChange={(e) => setForm({ ...form, personalEmail: e.target.value })} />
-                  </div>
-                  <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-                    <input type="checkbox" id="isHostelite" checked={form.isHostelite} onChange={(e) => setForm({ ...form, isHostelite: e.target.checked })} />
-                    <label htmlFor="isHostelite" style={{ cursor: 'pointer', fontSize: '0.88rem' }}>Is Student Hostelite?</label>
+                  <div className="form-group" style={{ marginTop: 12 }}>
+                    <label className="form-label">Hostel Portal Access</label>
+                    <select
+                      className="form-control"
+                      value={form.hostel_type || (form.isHostelite ? 'boys' : 'none')}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'none') {
+                          setForm({ ...form, isHostelite: false, hostel_type: '' });
+                        } else {
+                          setForm({ ...form, isHostelite: true, hostel_type: val });
+                        }
+                      }}
+                    >
+                      <option value="none">Not a Hostelite (No Access)</option>
+                      <option value="boys">Boys Hostel Block</option>
+                      <option value="girls">Girls Hostel Block</option>
+                    </select>
                   </div>
                 </>
               )}
@@ -380,52 +465,122 @@ export default function MentorManageUsers() {
 
       {activeTab === 'bulk' && (
         <div className="grid-2" style={{ alignItems: 'start' }}>
-          <div className="card card-lg">
-            <h3 className="mb-16"><MdFileUpload style={{ verticalAlign: 'middle' }} /> Excel Bulk Student Upload</h3>
+          <div className="card card-lg" style={{ padding: 18 }}>
+            <div className="flex-between" style={{ borderBottom: '1px solid var(--border)', paddingBottom: 10, marginBottom: 14 }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}><MdFileUpload style={{ verticalAlign: 'middle' }} /> Excel Bulk Student Upload</h3>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                style={{ padding: '5px 14px', fontSize: '0.78rem', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                onClick={() => {
+                  const templateData = [
+                    { 'Sl No': 1, Name: 'John Doe', USN: '4SO24CS001', Password: 'CampusTwin123', Email: 'john@example.com', Hostelite: 'boys', Phone: '+919988776655' },
+                    { 'Sl No': 2, Name: 'Jane Smith', USN: '4SO24CS002', Password: 'CampusTwin123', Email: 'jane@example.com', Hostelite: 'girls', Phone: '+919988776656' },
+                    { 'Sl No': 3, Name: 'Alex Kumar', USN: '4SO24CS003', Password: 'CampusTwin123', Email: '', Hostelite: 'no', Phone: '+919988776657' },
+                  ];
+                  const ws = XLSX.utils.json_to_sheet(templateData);
+                  ws['!cols'] = [{ wch: 6 }, { wch: 20 }, { wch: 16 }, { wch: 16 }, { wch: 24 }, { wch: 10 }, { wch: 16 }];
+                  const wb = XLSX.utils.book_new();
+                  XLSX.utils.book_append_sheet(wb, ws, 'Students');
+                  XLSX.writeFile(wb, 'student_import_template.xlsx');
+                  toast.success('Template downloaded!');
+                }}
+              >
+                ⬇ Download Template
+              </button>
+            </div>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 20 }}>
-              Upload student spreadsheet list (<code>.xlsx</code> or <code>.xls</code>). It must contain: <strong>Name</strong> and <strong>usn</strong>.
+              Upload student spreadsheet list (<code>.xlsx</code> or <code>.xls</code>) with columns: <strong>Sl No</strong>, <strong>Name</strong>, <strong>USN</strong>, <strong>Password</strong>, <strong>Email</strong>, <strong>Hostelite</strong>, and <strong>Phone</strong>.
             </p>
             <form onSubmit={handleBulkUpload}>
-              <div className="form-group">
-                <label className="form-label">Select Target Class Section *</label>
-                <select className="form-control" value={bulkClassId} onChange={(e) => setBulkClassId(e.target.value)}>
-                  <option value="">— Select Class —</option>
-                  {classes.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-                </select>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: 12 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ marginBottom: 4 }}>Select Target Class Section *</label>
+                  <select className="form-control" style={{ padding: '8px 12px' }} value={bulkClassId} onChange={(e) => setBulkClassId(e.target.value)}>
+                    <option value="">— Select Class —</option>
+                    {classes.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                  </select>
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ marginBottom: 4 }}>Excel File (.xlsx) *</label>
+                  <input type="file" className="form-control" style={{ padding: '6px 12px', fontSize: '0.85rem' }} accept=".xlsx, .xls" onChange={(e) => setBulkFile(e.target.files[0])} />
+                </div>
               </div>
-              <div className="form-group">
-                <label className="form-label">Excel File (.xlsx) *</label>
-                <input type="file" className="form-control" accept=".xlsx, .xls" onChange={(e) => setBulkFile(e.target.files[0])} />
-              </div>
-              <button type="submit" className="btn btn-primary btn-block" disabled={loading || !bulkFile || !bulkClassId}>
+              <button type="submit" className="btn btn-primary btn-block" style={{ padding: '10px', marginTop: 12 }} disabled={loading || !bulkFile || !bulkClassId}>
                 {loading ? 'Processing...' : 'Start Bulk Upload'}
               </button>
             </form>
 
             {bulkStatus.total > 0 && (
-              <div style={{ marginTop: 24 }}>
-                <div className="flex-between mb-8">
-                  <span className="font-semibold">Progress: {bulkStatus.current} / {bulkStatus.total}</span>
-                  <span className="text-muted">{Math.round((bulkStatus.current / bulkStatus.total) * 100)}%</span>
+              <div style={{ marginTop: 16 }}>
+                <div className="flex-between mb-4">
+                  <span className="font-semibold" style={{ fontSize: '0.8rem' }}>Progress: {bulkStatus.current} / {bulkStatus.total}</span>
+                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>{Math.round((bulkStatus.current / bulkStatus.total) * 100)}%</span>
                 </div>
-                <div style={{ height: 8, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', background: 'var(--primary)', width: `${(bulkStatus.current / bulkStatus.total) * 100}%`, transition: 'width 0.3s' }} />
+                <div style={{ height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)', width: `${(bulkStatus.current / bulkStatus.total) * 100}%`, transition: 'width 0.3s' }} />
                 </div>
-                <div style={{ marginTop: 16, maxHeight: 150, overflowY: 'auto', background: 'var(--surface-2)', padding: 10, borderRadius: 8, fontSize: '0.78rem', fontFamily: 'monospace' }}>
-                  {bulkStatus.logs.map((log, i) => <div key={i} style={{ marginBottom: 4 }}>{log}</div>)}
+                <div style={{ marginTop: 10, maxHeight: 110, overflowY: 'auto', background: 'var(--surface-2)', padding: 8, borderRadius: 6, fontSize: '0.75rem', fontFamily: 'monospace', border: '1px solid var(--border)' }}>
+                  {bulkStatus.logs.map((log, i) => <div key={i} style={{ marginBottom: 2 }}>{log}</div>)}
                 </div>
               </div>
             )}
           </div>
           
-          <div className="card">
-            <h3>📖 Excel format guide</h3>
-            <ul style={{ fontSize: '0.85rem', color: 'var(--text-muted)', paddingLeft: 20, marginTop: 12 }}>
-              <li style={{ marginBottom: 8 }}>Prepare sheet with header columns <strong>Name</strong> and <strong>usn</strong>.</li>
-              <li style={{ marginBottom: 8 }}>Optionally add a <strong>password</strong> column (defaults to 123456 if left blank).</li>
-              <li style={{ marginBottom: 8 }}>Students are automatically assigned to this class section with you as their Mentor.</li>
-              <li>Duplicates or existing USNs will be skipped.</li>
-            </ul>
+          <div className="card" style={{ padding: 18, background: 'var(--surface-2)' }}>
+            <h3 style={{ fontSize: '0.95rem', borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>📖 Upload Guide</h3>
+            <div style={{ overflowX: 'auto', marginTop: 12, marginBottom: 14 }}>
+              <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'var(--surface-1)', borderBottom: '2px solid var(--border)' }}>
+                    <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700 }}>Column</th>
+                    <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700 }}>Required</th>
+                    <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700 }}>Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
+                    <td style={{ padding: '5px 10px', fontWeight: 600 }}>Sl No</td>
+                    <td style={{ padding: '5px 10px', color: 'var(--text-muted)' }}>Optional</td>
+                    <td style={{ padding: '5px 10px', color: 'var(--text-muted)' }}>Serial number (auto-ignored, for reference only)</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
+                    <td style={{ padding: '5px 10px', fontWeight: 600 }}>Name</td>
+                    <td style={{ padding: '5px 10px', color: 'var(--success, green)' }}>✅ Yes</td>
+                    <td style={{ padding: '5px 10px', color: 'var(--text-muted)' }}>Full name of the student</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
+                    <td style={{ padding: '5px 10px', fontWeight: 600 }}>USN</td>
+                    <td style={{ padding: '5px 10px', color: 'var(--success, green)' }}>✅ Yes</td>
+                    <td style={{ padding: '5px 10px', color: 'var(--text-muted)' }}>University Seat Number (used as login ID)</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
+                    <td style={{ padding: '5px 10px', fontWeight: 600 }}>Password</td>
+                    <td style={{ padding: '5px 10px', color: 'var(--text-muted)' }}>Optional</td>
+                    <td style={{ padding: '5px 10px', color: 'var(--text-muted)' }}>Login password (defaults to <code>CampusTwin123</code> if empty. Forced change on first login)</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
+                    <td style={{ padding: '5px 10px', fontWeight: 600 }}>Email</td>
+                    <td style={{ padding: '5px 10px', color: 'var(--text-muted)' }}>Optional</td>
+                    <td style={{ padding: '5px 10px', color: 'var(--text-muted)' }}>Personal email address of the student</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid var(--border-light)' }}>
+                    <td style={{ padding: '5px 10px', fontWeight: 600 }}>Hostelite</td>
+                    <td style={{ padding: '5px 10px', color: 'var(--text-muted)' }}>Optional</td>
+                    <td style={{ padding: '5px 10px', color: 'var(--text-muted)' }}>Enter <strong>boys</strong>, <strong>girls</strong>, or <strong>no</strong>. Assigns hostel portal access and gender automatically.</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '5px 10px', fontWeight: 600 }}>Phone</td>
+                    <td style={{ padding: '5px 10px', color: 'var(--success, green)' }}>✅ Yes</td>
+                    <td style={{ padding: '5px 10px', color: 'var(--text-muted)' }}>Registered phone number used for first login SMS OTP verification (e.g. <code>+919988776655</code>)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              <p style={{ margin: '0 0 6px 0' }}>💡 <strong>Pro-Tip:</strong> Use the <strong>Download Template</strong> button to get a fully formatted excel spreadsheet with dummy data to get started quickly.</p>
+              <p style={{ margin: 0 }}>⚠️ All created students will be assigned under you as their Mentor automatically.</p>
+            </div>
           </div>
         </div>
       )}
@@ -500,6 +655,14 @@ export default function MentorManageUsers() {
                 <label className="form-label">USN (Cannot change)</label>
                 <input className="form-control" value={editingUser.usn || editingUser.email?.split('@')[0]} disabled />
               </div>
+              <div className="form-group">
+                <label className="form-label">Phone Number</label>
+                <input className="form-control" value={editForm.phone || ''} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} placeholder="e.g. +91 9988776655" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Personal Email</label>
+                <input type="email" className="form-control" value={editForm.personalEmail || ''} onChange={(e) => setEditForm({ ...editForm, personalEmail: e.target.value })} placeholder="e.g. user@example.com" />
+              </div>
               
               {editingUser.role === 'student' && (
                 <>
@@ -510,13 +673,25 @@ export default function MentorManageUsers() {
                       {classes.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
                     </select>
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Personal Email</label>
-                    <input type="email" className="form-control" value={editForm.personalEmail || ''} onChange={(e) => setEditForm({ ...editForm, personalEmail: e.target.value })} />
-                  </div>
-                  <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-                    <input type="checkbox" id="editIsHostelite" checked={editForm.isHostelite || false} onChange={(e) => setEditForm({ ...editForm, isHostelite: e.target.checked })} />
-                    <label htmlFor="editIsHostelite" style={{ cursor: 'pointer', fontSize: '0.88rem' }}>Is Student Hostelite?</label>
+                  <div className="form-group" style={{ marginTop: 12 }}>
+                    <label className="form-label" style={{ marginBottom: 4 }}>Hostel Portal Access</label>
+                    <select 
+                      className="form-control" 
+                      style={{ padding: '8px 12px' }} 
+                      value={editForm.hostel_type || (editForm.isHostelite ? 'boys' : 'none')} 
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'none') {
+                          setEditForm({ ...editForm, isHostelite: false, hostel_type: '', gender: editForm.gender || '' });
+                        } else {
+                          setEditForm({ ...editForm, isHostelite: true, hostel_type: val, gender: val === 'boys' ? 'male' : 'female' });
+                        }
+                      }}
+                    >
+                      <option value="none">Not a Hostelite (No Access)</option>
+                      <option value="boys">Boys Hostel Block</option>
+                      <option value="girls">Girls Hostel Block</option>
+                    </select>
                   </div>
                 </>
               )}

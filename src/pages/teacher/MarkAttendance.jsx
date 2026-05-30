@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
-import { getStudentsByClass, addDocument, getById } from '../../appwrite/database';
+import { getStudentsByClass, addDocument, getById, getAll } from '../../appwrite/database';
 import { toast } from 'react-hot-toast';
 import { MdSave, MdHowToReg } from 'react-icons/md';
 
@@ -30,6 +30,7 @@ export default function TeacherMarkAttendance() {
   const [attendance, setAttendance] = useState({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [registeredStudentIds, setRegisteredStudentIds] = useState(new Set());
 
   // Load teacher's class assignments on mount
   useEffect(() => {
@@ -55,26 +56,75 @@ export default function TeacherMarkAttendance() {
 
       setSelectedIdx(initialIdx);
       if (withInfo.length > 0) {
-        loadStudents(withInfo[initialIdx].class_id);
+        loadStudents(withInfo[initialIdx].class_id, withInfo[initialIdx].subject);
       }
     };
     if (userProfile) load();
   }, [userProfile, classIdParam, subjectParam]);
 
-  const loadStudents = async (classId) => {
+  const loadStudents = async (classId, subjectName) => {
     if (!classId) return;
     setLoading(true);
-    const data = await getStudentsByClass(classId);
-    setStudents(data);
-    const init = {};
-    data.forEach((s) => { init[s.id] = 'present'; });
-    setAttendance(init);
-    setLoading(false);
+    try {
+      const data = await getStudentsByClass(classId);
+      
+      const regIds = new Set();
+      if (subjectName) {
+        // Fetch all subjects to find matching courseName/courseCode/id
+        const allSubjects = await getAll('subjects');
+        const subjectDoc = allSubjects.find(sub => {
+          const target = subjectName.trim().toLowerCase();
+          const sName = sub.courseName?.trim().toLowerCase() || '';
+          const sCode = sub.courseCode?.trim().toLowerCase() || '';
+          return (
+            sName === target ||
+            sCode === target ||
+            target.includes(sName) ||
+            target.includes(sCode) ||
+            sub.id === subjectName ||
+            sub.$id === subjectName
+          );
+        });
+
+        if (subjectDoc) {
+          const targetSubjectId = subjectDoc.id || subjectDoc.$id;
+          data.forEach(s => {
+            let registeredIds = [];
+            if (s.registered_subjects) {
+              try {
+                registeredIds = typeof s.registered_subjects === 'string'
+                  ? JSON.parse(s.registered_subjects)
+                  : s.registered_subjects;
+              } catch (e) {
+                registeredIds = [];
+              }
+            }
+            if (Array.isArray(registeredIds) && registeredIds.includes(targetSubjectId)) {
+              regIds.add(s.id);
+            }
+          });
+        }
+      }
+      
+      setRegisteredStudentIds(regIds);
+      setStudents(data);
+      const init = {};
+      data.forEach((s) => { init[s.id] = 'present'; });
+      setAttendance(init);
+    } catch (err) {
+      console.error('Error loading students for attendance:', err);
+      toast.error('Failed to load students');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAssignmentChange = (idx) => {
     setSelectedIdx(idx);
-    loadStudents(assignments[idx]?.class_id);
+    const assign = assignments[idx];
+    if (assign) {
+      loadStudents(assign.class_id, assign.subject);
+    }
   };
 
   const toggleAttendance = (studentId) => {
@@ -194,6 +244,9 @@ export default function TeacherMarkAttendance() {
                       <div>
                         <span className="font-semibold" style={{ fontSize: '0.9rem' }}>{student.name}</span>
                         <span style={{ marginLeft: 12, fontSize: '0.8rem', color: 'var(--text-muted)' }}>{student.usn}</span>
+                        {registeredStudentIds.has(student.id) && (
+                          <span className="badge badge-approved" style={{ marginLeft: 8, fontSize: '0.7rem', verticalAlign: 'middle' }}>Registered</span>
+                        )}
                       </div>
                       <span className={`badge badge-${isPresent ? 'present' : 'absent'}`}>
                         {isPresent ? '✓ Present' : '✗ Absent'}

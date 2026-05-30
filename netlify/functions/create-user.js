@@ -32,9 +32,54 @@ exports.handler = async (event, context) => {
       })
     });
 
-    const data = await res.json();
+    let data;
+    try {
+      data = await res.json();
+    } catch (e) {
+      data = {};
+    }
     
     if (!res.ok) {
+      // If user already exists (409 Conflict), try to find the existing user
+      if (res.status === 409 || (data.message && data.message.includes('already exists'))) {
+        try {
+          const searchRes = await fetch(`${endpoint}/users?search=${encodeURIComponent(email)}`, {
+            method: 'GET',
+            headers: {
+              'X-Appwrite-Project': projectId,
+              'X-Appwrite-Key': apiKey,
+            }
+          });
+          if (searchRes.ok) {
+            const searchData = await searchRes.json();
+            const existingUser = searchData.users?.find(u => u.email.toLowerCase() === email.toLowerCase());
+            if (existingUser) {
+              // Update the password of the existing user to match what the admin specified
+              try {
+                await fetch(`${endpoint}/users/${existingUser.$id}/password`, {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-Appwrite-Project': projectId,
+                    'X-Appwrite-Key': apiKey,
+                  },
+                  body: JSON.stringify({ password })
+                });
+              } catch (passwordErr) {
+                console.error('Failed to update existing user password:', passwordErr);
+              }
+
+              return {
+                statusCode: 200,
+                body: JSON.stringify(existingUser),
+              };
+            }
+          }
+        } catch (searchErr) {
+          console.error('Failed to search for existing user:', searchErr);
+        }
+      }
+
       return {
         statusCode: res.status,
         body: JSON.stringify({ error: data.message || 'Failed to create user in Appwrite.' })

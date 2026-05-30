@@ -1,0 +1,139 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: auto;
+  background: var(--surface-0);
+}
+
+.login-page {
+  display: flex;
+  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Root container fills the viewport */
+.login-page {
+  display: flex;
+  min-height: 100vh; /* fill vertical space */
+  overflow: auto;   /* prevent page scroll */
+  background: var(--surface-0);
+}
+
+/* Left side – decorative panel */
+.login-left {
+  flex: 1 1 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: white;
+  text-align: center;
+}
+
+/* Right side – form panel */
+.login-right {
+  flex: 1 1 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  overflow: hidden; /* prevent internal scrolling */
+}
+
+/* Card that holds the login form */
+.login-card {
+  background: var(--surface-1);
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 420px;
+}
+
+/* Logo area inside the card */
+.login-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+.login-logo-icon {
+  font-size: 2rem;
+  font-weight: 700;
+  background: var(--primary);
+  color: white;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+.login-logo-text h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  color: var(--text-primary);
+}
+.login-logo-text p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+/* Forms */
+.login-page .form-group {
+  margin-bottom: 1rem;
+}
+.login-page .form-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+.login-page .form-control {
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+/* Button adjustments */
+.login-page .btn-primary {
+  background: var(--primary);
+  color: white;
+  border: none;
+  width: 100%;
+  padding: 0.6rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.login-page .btn-primary:hover {
+  background: var(--primary-dark);
+}
+
+/* Responsive: hide left panel on small screens */
+@media (max-width: 768px) {
+  .login-page {
+    flex-direction: column;
+  }
+  .login-left {
+    background: #2a3b5d; /* fallback dark background */
+    height: 100%;
+    display: none;
+  }
+  .login-right {
+    flex: 1 1 auto;
+    width: 100%;
+    padding: 1rem;
+  }
+}

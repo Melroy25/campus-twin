@@ -20,8 +20,23 @@ export default function MentorStudents() {
   useEffect(() => {
     if (!currentUser?.uid) return;
     const load = async () => {
-      // Fetch students who have this mentor assigned
-      const students = await queryDocuments('students', where('mentor_id', '==', currentUser.uid));
+      // 1. Fetch students who have this mentor assigned directly
+      const directStudents = await queryDocuments('students', [where('mentor_id', '==', currentUser.uid)]);
+
+      // 2. Fetch classes where this teacher is the mentor
+      const mentoredClasses = await queryDocuments('classes', [where('mentor_id', '==', currentUser.uid)]);
+
+      // 3. Fetch students belonging to those classes
+      const classStudentsPromises = mentoredClasses.map(cls => getStudentsByClass(cls.id));
+      const classStudentsResults = await Promise.all(classStudentsPromises);
+      const classStudents = classStudentsResults.flat();
+
+      // 4. Merge lists by unique student ID
+      const studentsMap = new Map();
+      directStudents.forEach(s => studentsMap.set(s.id, s));
+      classStudents.forEach(s => studentsMap.set(s.id, s));
+      const students = Array.from(studentsMap.values());
+
       setMentees(students);
 
       // Fetch distinct class details for these students

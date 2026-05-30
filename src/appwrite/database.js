@@ -144,6 +144,22 @@ export const deleteDocument = async (collectionId, documentId) => {
   }
 };
 
+
+/**
+ * Delete a document
+ */
+export const clearCollection = async (collectionId) => {
+  try {
+    const docs = await getAll(collectionId);
+    const deletePromises = docs.map((doc) => deleteDocument(collectionId, doc.$id));
+    await Promise.all(deletePromises);
+    console.log(`Cleared collection ${collectionId}`);
+  } catch (error) {
+    console.error(`Error clearing collection ${collectionId}:`, error);
+    throw error;
+  }
+};
+
 /**
  * Firestore Helper Emulators for Backward Compatibility with our code
  */
@@ -155,10 +171,20 @@ export const getUserProfile = async (uid) => {
     const rolesDocs = await queryDocuments('userRoles', [Query.equal('uid', uid)]);
     if (rolesDocs.length > 0) {
       const role = rolesDocs[0].role;
+      const avatarUrl = rolesDocs[0].avatar_url || '';
       const collection = role === 'student' ? 'students' : (role === 'teacher' || role === 'mentor') ? 'teachers' : 'admins';
       const profiles = await queryDocuments(collection, [Query.equal('uid', uid)]);
       if (profiles.length > 0) {
-        const profile = { ...profiles[0], id: profiles[0].$id, role };
+        const profile = { 
+          ...profiles[0], 
+          id: profiles[0].$id, 
+          role, 
+          avatar_url: avatarUrl || profiles[0].avatar_url || '',
+          must_change_password: !!rolesDocs[0].must_change_password,
+          phone: rolesDocs[0].phone || '',
+          email: rolesDocs[0].email || '',
+          personalEmail: rolesDocs[0].email || ''
+        };
         if (profile.class_assignments && typeof profile.class_assignments === 'string') {
           try {
             profile.class_assignments = JSON.parse(profile.class_assignments);
@@ -178,7 +204,12 @@ export const getUserProfile = async (uid) => {
     try {
       const users = await queryDocuments(table, [Query.equal('uid', uid)]);
       if (users.length > 0) {
-        const profile = { ...users[0], id: users[0].$id, role: table.slice(0, -1) };
+        const profile = { 
+          ...users[0], 
+          id: users[0].$id, 
+          role: table.slice(0, -1),
+          avatar_url: users[0].avatar_url || ''
+        };
         if (profile.class_assignments && typeof profile.class_assignments === 'string') {
           try {
             profile.class_assignments = JSON.parse(profile.class_assignments);
@@ -191,6 +222,34 @@ export const getUserProfile = async (uid) => {
     } catch {}
   }
   return null;
+};
+
+/**
+ * Update the user's avatar_url in the userRoles and specific database table
+ */
+export const updateAvatarUrl = async (uid, role, url) => {
+  // 1. Update in userRoles
+  try {
+    const rolesDocs = await queryDocuments('userRoles', [Query.equal('uid', uid)]);
+    if (rolesDocs.length > 0) {
+      await updateDocument('userRoles', rolesDocs[0].$id, { avatar_url: url });
+    }
+  } catch (err) {
+    console.error("Failed to update avatar in userRoles:", err);
+  }
+
+  // 2. Update in specific collection
+  try {
+    const collection = role === 'student' ? 'students' : (role === 'teacher' || role === 'mentor') ? 'teachers' : 'admins';
+    const profiles = await queryDocuments(collection, [Query.equal('uid', uid)]);
+    if (profiles.length > 0) {
+      if (collection !== 'teachers') {
+        await updateDocument(collection, profiles[0].$id, { avatar_url: url });
+      }
+    }
+  } catch (err) {
+    console.error("Failed to update avatar in role collection:", err);
+  }
 };
 
 // Students & Classes
@@ -229,10 +288,42 @@ export const getAttendanceSummary = (attendanceRecords) => {
 
 // AICTE
 export const getAICTEByStudent = async (studentId) => {
-  return await queryDocuments('aictePoints', [Query.equal('student_id', studentId)]);
+  const data = await queryDocuments('aictePoints', [Query.equal('student_id', studentId)]);
+  return data.map(d => ({ ...d, description: d.activity_name || d.description || '' }));
 };
 export const getAICTEByMentor = async (mentorId) => {
-  return await queryDocuments('aictePoints', [Query.equal('mentor_id', mentorId)]);
+  try {
+    // 1. Fetch direct matching points
+    const directPoints = await queryDocuments('aictePoints', [Query.equal('mentor_id', mentorId)]);
+
+    // 2. Fetch classes mentored by this teacher
+    const mentoredClasses = await queryDocuments('classes', [Query.equal('mentor_id', mentorId)]);
+    
+    // 3. Fetch students of those classes
+    const classStudentsPromises = mentoredClasses.map(cls => getStudentsByClass(cls.$id || cls.id));
+    const classStudentsResults = await Promise.all(classStudentsPromises);
+    const classStudents = classStudentsResults.flat();
+    const studentIds = new Set(classStudents.map(s => s.uid || s.id));
+
+    let merged = [...directPoints];
+    if (studentIds.size > 0) {
+      // 4. Fetch all pending aicte points to see if any are from these students but missing mentor_id
+      const pendingPoints = await queryDocuments('aictePoints', [Query.equal('status', 'pending')]);
+      const extraPoints = pendingPoints.filter(p => studentIds.has(p.student_id) && p.mentor_id !== mentorId);
+
+      // Merge lists
+      extraPoints.forEach(p => {
+        if (!merged.some(m => m.id === p.id)) {
+          merged.push(p);
+        }
+      });
+    }
+
+    return merged.map(d => ({ ...d, description: d.activity_name || d.description || '' }));
+  } catch (err) {
+    console.error("Error in getAICTEByMentor:", err);
+    return [];
+  }
 };
 
 // Leave
@@ -304,9 +395,15 @@ export const addNotification = async (userIdOrData, message) => {
   }
 };
 
+const CHANGELOG_FIELDS = ['timetable_id', 'action', 'details', 'changed_by', 'createdAt'];
+
 export const addChangeLog = async (timetableIdOrData, action, details, changedBy) => {
   if (typeof timetableIdOrData === 'object' && timetableIdOrData !== null) {
-    return await addDocument('changelogs', { ...timetableIdOrData, createdAt: new Date().toISOString() });
+    const clean = { createdAt: new Date().toISOString() };
+    CHANGELOG_FIELDS.forEach(f => {
+      if (timetableIdOrData[f] !== undefined && timetableIdOrData[f] !== null) clean[f] = timetableIdOrData[f];
+    });
+    return await addDocument('changelogs', clean);
   } else {
     return await addDocument('changelogs', {
       timetable_id: timetableIdOrData,
@@ -317,6 +414,7 @@ export const addChangeLog = async (timetableIdOrData, action, details, changedBy
     });
   }
 };
+
 
 // Event Registrations
 export const registerForEvent = async (eventId, studentId, studentName, studentUsn) => {

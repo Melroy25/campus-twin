@@ -1,0 +1,62 @@
+/* ManageBranches component styling */
+
+/* Grid layout for branch cards */
+.branches-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+  /* Fill the viewport height minus header/footer */
+  height: calc(100vh - 180px);
+  overflow: hidden;
+}
+
+/* Compact view overrides */
+.branches-grid-2.compact {
+  gap: 8px;
+  max-height: calc(100vh - 140px);
+  overflow-y: hidden; /* hide overflow to avoid scrollbars */
+}
+
+.card {
+  background: var(--surface-1);
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+/* Compact card adjustments */
+.branches-grid-2.compact .card {
+  padding: 0.75rem;
+  font-size: 0.85rem;
+}
+
+/* Buttons container spacing */
+.btn {
+  min-height: 2.2rem;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.9rem;
+}
+
+/* Modal overlay styling */
+.modal-overlay {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(3px);
+}
+
+/* Adjust page titles */
+.page-title {
+  font-size: 1.8rem;
+  margin: 0;
+}
+
+.page-subtitle {
+  font-size: 1rem;
+  color: var(--text-muted);
+}

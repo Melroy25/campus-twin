@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
-import { getById, queryDocuments, getAll, updateDocument } from '../../appwrite/database';
+import { getById, queryDocuments, getAll, updateDocument, deleteDocument } from '../../appwrite/database';
 import { where } from '../../appwrite/database';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import {
-  MdHowToReg, MdBarChart, MdSchool, MdToday, MdPeople, MdArrowForward
+  MdHowToReg, MdBarChart, MdSchool, MdToday, MdPeople, MdArrowForward, MdDescription
 } from 'react-icons/md';
 
 export default function TeacherHome() {
@@ -20,6 +20,7 @@ export default function TeacherHome() {
   const [loading, setLoading] = useState(true);
   const [advisingClasses, setAdvisingClasses] = useState([]);
   const [enablingChatId, setEnablingChatId] = useState(null);
+  const [deletingChatId, setDeletingChatId] = useState(null);
 
   useEffect(() => {
     const load = async () => {
@@ -127,6 +128,35 @@ export default function TeacherHome() {
     }
   };
 
+  const handleDeleteChat = async (classId) => {
+    if (!confirm("Are you sure you want to delete this class chat? This will remove all members and messages.")) return;
+    setDeletingChatId(classId);
+    try {
+      // 1. Disable chat and clear members
+      await updateDocument('classes', classId, { 
+        chat_enabled: false,
+        chat_additional_members: []
+      });
+
+      // 2. Clear all messages
+      const msgs = await queryDocuments('class_messages', [
+        where('class_id', '==', classId)
+      ]);
+      for (const msg of msgs) {
+        await deleteDocument('class_messages', msg.$id);
+      }
+
+      toast.success("Class Chat Group has been deleted!");
+      // Update state locally
+      setAdvisingClasses(prev => prev.map(c => c.id === classId ? { ...c, chat_enabled: false, chat_additional_members: [] } : c));
+    } catch (err) {
+      toast.error("Failed to delete class chat");
+      console.error(err);
+    } finally {
+      setDeletingChatId(null);
+    }
+  };
+
   const quickActions = [
     { label: 'Mark Attendance', icon: <MdHowToReg />, path: '/teacher/attendance', color: 'var(--primary-light)', iconColor: 'var(--primary)' },
     { label: 'Add Marks', icon: <MdBarChart />, path: '/teacher/marks', color: 'var(--success-light)', iconColor: 'var(--success)' },
@@ -162,7 +192,7 @@ export default function TeacherHome() {
             {advisingClasses.map((cls) => (
               <div key={cls.id} style={{
                 padding: '14px 16px',
-                background: 'white',
+                background: 'var(--surface)',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius)',
                 display: 'flex',
@@ -184,12 +214,22 @@ export default function TeacherHome() {
                 
                 <div>
                   {cls.chat_enabled ? (
-                    <button
-                      className="btn btn-sm btn-primary"
-                      onClick={() => navigate(`/teacher/chat?class_id=${cls.id}`)}
-                    >
-                      Join Chat Group
-                    </button>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        className="btn btn-sm btn-primary"
+                        onClick={() => navigate(`/teacher/chat?class_id=${cls.id}`)}
+                      >
+                        Join Chat Group
+                      </button>
+                      <button
+                        className="btn btn-sm btn-ghost"
+                        style={{ color: 'var(--danger)', border: '1px solid var(--danger)' }}
+                        onClick={() => handleDeleteChat(cls.id)}
+                        disabled={deletingChatId === cls.id}
+                      >
+                        {deletingChatId === cls.id ? 'Deleting...' : 'Delete Chat'}
+                      </button>
+                    </div>
                   ) : (
                     <button
                       className="btn btn-sm btn-success"
@@ -271,100 +311,53 @@ export default function TeacherHome() {
             )}
           </div>
 
-          {/* Today's Schedule & Conducted Classes */}
-          <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0 }}><MdToday style={{ verticalAlign: 'middle' }} /> Today's Classes</h3>
-              <div style={{ display: 'flex', gap: 4, background: 'var(--surface-2)', padding: 2, borderRadius: 6 }}>
-                <button
-                  className="btn btn-sm"
-                  style={{
-                    padding: '4px 8px', fontSize: '0.75rem',
-                    background: activeTab === 'conducted' ? 'white' : 'transparent',
-                    color: activeTab === 'conducted' ? 'var(--text-primary)' : 'var(--text-muted)',
-                    boxShadow: activeTab === 'conducted' ? 'var(--shadow-sm)' : 'none',
-                    border: 'none', cursor: 'pointer'
-                  }}
-                  onClick={() => setActiveTab('conducted')}
-                >
-                  Conducted ({conductedToday.length})
-                </button>
-                <button
-                  className="btn btn-sm"
-                  style={{
-                    padding: '4px 8px', fontSize: '0.75rem',
-                    background: activeTab === 'timetable' ? 'white' : 'transparent',
-                    color: activeTab === 'timetable' ? 'var(--text-primary)' : 'var(--text-muted)',
-                    boxShadow: activeTab === 'timetable' ? 'var(--shadow-sm)' : 'none',
-                    border: 'none', cursor: 'pointer'
-                  }}
-                  onClick={() => setActiveTab('timetable')}
-                >
-                  Schedule ({todaySchedule.length})
-                </button>
+          {/* Leave Requests Shortcut Card */}
+          <div 
+            className="card"
+            style={{ 
+              cursor: 'pointer', 
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              minHeight: 180,
+              padding: '24px',
+              background: 'linear-gradient(135deg, var(--surface-2) 0%, var(--surface-1) 100%)',
+              border: '1.5px solid var(--border)'
+            }}
+            onClick={() => navigate('/teacher/leave')}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = 'var(--primary)';
+              e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'var(--border)';
+              e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
+            }}
+          >
+            <div>
+              <div style={{ 
+                width: 48, 
+                height: 48, 
+                borderRadius: 'var(--radius)', 
+                background: 'rgba(235, 94, 40, 0.1)', 
+                color: 'var(--danger)', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                fontSize: '1.6rem',
+                marginBottom: 16
+              }}>
+                <MdDescription />
               </div>
+              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.1rem', fontWeight: 700 }}>Leave Requests</h3>
+              <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                Review and approve or reject leave applications submitted by students in your classes.
+              </p>
             </div>
-
-            {activeTab === 'conducted' ? (
-              conductedToday.length === 0 ? (
-                <div className="empty-state" style={{ minHeight: 120 }}>
-                  <p className="mb-12" style={{ fontSize: '0.85rem' }}>No classes conducted today yet.</p>
-                  <button className="btn btn-primary btn-sm" onClick={() => navigate('/teacher/attendance')}>
-                    Mark Attendance Now
-                  </button>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {conductedToday.map((c, idx) => (
-                    <div key={idx} style={{
-                      padding: '12px 14px', border: '1.5px solid var(--success-light)',
-                      background: 'var(--success-light)', borderRadius: 'var(--radius)',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                    }}>
-                      <div>
-                        <div className="font-semibold" style={{ fontSize: '0.9rem', color: 'var(--success)' }}>
-                          {c.classLabel} — {c.subject}
-                        </div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                          🕒 {c.time || 'N/A'}
-                        </div>
-                      </div>
-                      <span className="badge badge-approved" style={{ fontSize: '0.78rem' }}>
-                        Present: {c.present} / {c.total}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )
-            ) : (
-              todaySchedule.length === 0 ? (
-                <div className="empty-state" style={{ minHeight: 120 }}>
-                  <p style={{ fontSize: '0.85rem' }}>No classes scheduled for today in timetable.</p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {todaySchedule.map((s) => (
-                    <div key={s.id} style={{
-                      padding: '10px 12px', background: 'var(--primary-light)',
-                      borderRadius: 'var(--radius-sm)', display: 'flex', justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}>
-                      <div>
-                        <span className="font-semibold" style={{ fontSize: '0.88rem' }}>{s.subject}</span>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--primary)' }}>{s.time || s.period}</div>
-                      </div>
-                      <button
-                        className="btn btn-sm btn-ghost"
-                        style={{ background: 'white', fontSize: '0.75rem', padding: '4px 8px' }}
-                        onClick={() => navigate(`/teacher/attendance?class_id=${s.class_id}&subject=${s.subject}&time=${encodeURIComponent(s.time)}`)}
-                      >
-                        Mark
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--primary)', fontWeight: 600, fontSize: '0.88rem', marginTop: 16 }}>
+              Review Leave Requests <MdArrowForward size={16} />
+            </div>
           </div>
         </div>
       )}

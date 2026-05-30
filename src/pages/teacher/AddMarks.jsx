@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
-import { getStudentsByClass, addDocument, getById } from '../../appwrite/database';
+import { getStudentsByClass, addDocument, updateDocument, getById, getAll, queryDocuments, where } from '../../appwrite/database';
 import { toast } from 'react-hot-toast';
 import { MdSave, MdBarChart } from 'react-icons/md';
 
@@ -11,63 +11,182 @@ export default function TeacherAddMarks() {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [students, setStudents] = useState([]);
   const [marks, setMarks] = useState({});
+  const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       const raw = userProfile?.class_assignments || [];
-      const withInfo = await Promise.all(
-        raw.map(async (a) => {
-          const cls = await getById('classes', a.class_id);
-          return { ...a, classInfo: cls };
-        })
-      );
+      const [withInfo, subjectsData] = await Promise.all([
+        Promise.all(
+          raw.map(async (a) => {
+            const cls = await getById('classes', a.class_id);
+            return { ...a, classInfo: cls };
+          })
+        ),
+        getAll('subjects')
+      ]);
+      setSubjects(subjectsData);
       setAssignments(withInfo);
-      if (withInfo.length > 0) loadStudents(withInfo[0].class_id);
+      if (withInfo.length > 0) {
+        const subDoc = subjectsData.find(s => s.courseName === withInfo[0].subject);
+        loadStudents(withInfo[0].class_id, withInfo[0].subject, subDoc?.is_lab_integrated === true);
+      }
     };
     if (userProfile) load();
   }, [userProfile]);
 
-  const loadStudents = async (classId) => {
+  const loadStudents = async (classId, subjectName, isIntegrated) => {
     setLoading(true);
-    const data = await getStudentsByClass(classId);
-    setStudents(data);
-    const initMarks = {};
-    data.forEach((s) => { initMarks[s.id] = { test1: '', test2: '', assignment: '' }; });
-    setMarks(initMarks);
-    setLoading(false);
+    try {
+      const [studentsData, marksData] = await Promise.all([
+        getStudentsByClass(classId),
+        queryDocuments('marks', [
+          where('subject', '==', subjectName || '')
+        ])
+      ]);
+
+      setStudents(studentsData);
+
+      const initMarks = {};
+      studentsData.forEach((s) => {
+        const existingDoc = marksData.find(m => m.student_id === s.id);
+        if (existingDoc) {
+          try {
+            const parsed = JSON.parse(existingDoc.marks_obtained);
+            initMarks[s.id] = {
+              docId: existingDoc.id || existingDoc.$id,
+              ia1: parsed.ia1 !== undefined && parsed.ia1 !== null ? String(parsed.ia1) : '',
+              ia2: parsed.ia2 !== undefined && parsed.ia2 !== null ? String(parsed.ia2) : '',
+              ass1: parsed.ass1 !== undefined && parsed.ass1 !== null ? String(parsed.ass1) : '',
+              ass2: parsed.ass2 !== undefined && parsed.ass2 !== null ? String(parsed.ass2) : '',
+              lab1: parsed.lab1 !== undefined && parsed.lab1 !== null ? String(parsed.lab1) : '',
+              lab2: parsed.lab2 !== undefined && parsed.lab2 !== null ? String(parsed.lab2) : '',
+              total: parsed.total ?? 0
+            };
+          } catch (e) {
+            initMarks[s.id] = { docId: existingDoc.id || existingDoc.$id, ia1: '', ia2: '', ass1: '', ass2: '', lab1: '', lab2: '', total: 0 };
+          }
+        } else {
+          initMarks[s.id] = { docId: null, ia1: '', ia2: '', ass1: '', ass2: '', lab1: '', lab2: '', total: 0 };
+        }
+      });
+      setMarks(initMarks);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to load students or marks');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const calculateTotal = (m, isIntegrated) => {
+    const ia1 = m.ia1 === '' ? 0 : Number(m.ia1) || 0;
+    const ia2 = m.ia2 === '' ? 0 : Number(m.ia2) || 0;
+    const ass1 = m.ass1 === '' ? 0 : Number(m.ass1) || 0;
+    const ass2 = m.ass2 === '' ? 0 : Number(m.ass2) || 0;
+
+    // IA Avg (max 50)
+    const iaAvg = (ia1 + ia2) / 2;
+    const iaScaled = iaAvg * 0.8; // scale 50 -> 40
+
+    // Assignment Avg (max 10)
+    const assAvg = (ass1 + ass2) / 2;
+
+    const theoryTotal = iaScaled + assAvg; // Max 50
+
+    if (isIntegrated) {
+      const lab1 = m.lab1 === '' ? 0 : Number(m.lab1) || 0;
+      const lab2 = m.lab2 === '' ? 0 : Number(m.lab2) || 0;
+      const labAvg = (lab1 + lab2) / 2; // Max 50
+
+      // CIE Total = 60% Theory + 40% Lab
+      const finalTotal = (theoryTotal * 0.6) + (labAvg * 0.4);
+      return Math.round(finalTotal);
+    }
+
+    return Math.round(theoryTotal);
   };
 
   const handleAssignmentChange = (idx) => {
     setSelectedIdx(idx);
-    loadStudents(assignments[idx]?.class_id);
+    const assignment = assignments[idx];
+    if (assignment) {
+      const subDoc = subjects.find(s => s.courseName === assignment.subject);
+      loadStudents(assignment.class_id, assignment.subject, subDoc?.is_lab_integrated === true);
+    }
   };
 
   const updateMark = (studentId, field, value) => {
-    setMarks((prev) => ({ ...prev, [studentId]: { ...prev[studentId], [field]: value } }));
+    setMarks((prev) => {
+      const updatedStudent = { ...prev[studentId], [field]: value };
+      const current = assignments[selectedIdx];
+      const subDoc = subjects.find(s => s.courseName === current?.subject);
+      const isIntegrated = subDoc?.is_lab_integrated === true;
+      updatedStudent.total = calculateTotal(updatedStudent, isIntegrated);
+      return { ...prev, [studentId]: updatedStudent };
+    });
   };
 
   const saveAllMarks = async () => {
     const current = assignments[selectedIdx];
     if (students.length === 0) return toast.error('Load students first');
+    const currentSubject = subjects.find(s => s.courseName === current?.subject);
+    const isIntegrated = currentSubject?.is_lab_integrated === true;
+
     setSaving(true);
     try {
-      await Promise.all(students.map((s) => {
+      await Promise.all(students.map(async (s) => {
         const m = marks[s.id] || {};
-        return addDocument('marks', {
-          student_id: s.id,
-          class_id: current.class_id,
-          subject: current.subject || '',
-          test1: Number(m.test1) || 0,
-          test2: Number(m.test2) || 0,
-          assignment: Number(m.assignment) || 0,
-          total: (Number(m.test1) || 0) + (Number(m.test2) || 0) + (Number(m.assignment) || 0),
-        });
+        const total = calculateTotal(m, isIntegrated);
+
+        const payload = {
+          ia1: m.ia1 === '' ? null : Number(m.ia1),
+          ia2: m.ia2 === '' ? null : Number(m.ia2),
+          ass1: m.ass1 === '' ? null : Number(m.ass1),
+          ass2: m.ass2 === '' ? null : Number(m.ass2),
+          ...(isIntegrated ? {
+            lab1: m.lab1 === '' ? null : Number(m.lab1),
+            lab2: m.lab2 === '' ? null : Number(m.lab2),
+          } : {}),
+          total: total
+        };
+
+        const marksObtainedJson = JSON.stringify(payload);
+
+        if (m.docId) {
+          // Update
+          await updateDocument('marks', m.docId, {
+            marks_obtained: marksObtainedJson,
+            semester: current.classInfo?.semester || '1st Semester',
+            createdAt: new Date().toISOString()
+          });
+        } else {
+          // Create
+          const newDoc = await addDocument('marks', {
+            student_id: s.id,
+            exam_type: 'Internal',
+            subject: current.subject || '',
+            marks_obtained: marksObtainedJson,
+            max_marks: '50',
+            semester: current.classInfo?.semester || '1st Semester',
+            createdAt: new Date().toISOString()
+          });
+          // Update local state with docId
+          setMarks(prev => ({
+            ...prev,
+            [s.id]: { ...prev[s.id], docId: newDoc.id || newDoc.$id }
+          }));
+        }
       }));
       toast.success('Marks saved for all students!');
-    } catch { toast.error('Save failed'); }
-    finally { setSaving(false); }
+    } catch (e) {
+      console.error(e);
+      toast.error('Save failed');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const current = assignments[selectedIdx];
@@ -105,7 +224,8 @@ export default function TeacherAddMarks() {
           {current && (
             <div style={{ marginBottom: 14, padding: '8px 12px', background: 'var(--primary-light)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem' }}>
               📚 Subject: <strong>{current.subject || 'N/A'}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;
-              🏫 Class: <strong>{current.classInfo?.label || current.class_id}</strong>
+              🏫 Class: <strong>{current.classInfo?.label || current.class_id}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;
+              ⚙️ Course Type: <strong>{subjects.find(s => s.courseName === current.subject)?.is_lab_integrated ? 'Lab Integrated' : 'Theory Only'}</strong>
             </div>
           )}
 
@@ -121,32 +241,49 @@ export default function TeacherAddMarks() {
                     <tr>
                       <th>Student</th>
                       <th>USN</th>
-                      <th>Test 1 /10</th>
-                      <th>Test 2 /10</th>
-                      <th>Assignment /10</th>
-                      <th>Total /30</th>
+                      <th>IA 1 /50</th>
+                      <th>IA 2 /50</th>
+                      <th>Assg 1 /10</th>
+                      <th>Assg 2 /10</th>
+                      {subjects.find(sub => sub.courseName === current?.subject)?.is_lab_integrated && (
+                        <>
+                          <th>Lab 1 /50</th>
+                          <th>Lab 2 /50</th>
+                        </>
+                      )}
+                      <th>Total /50</th>
                     </tr>
                   </thead>
                   <tbody>
                     {students.map((s) => {
                       const m = marks[s.id] || {};
-                      const total = (Number(m.test1) || 0) + (Number(m.test2) || 0) + (Number(m.assignment) || 0);
+                      const isIntegrated = subjects.find(sub => sub.courseName === current?.subject)?.is_lab_integrated === true;
+                      const total = calculateTotal(m, isIntegrated);
+                      
+                      const fields = isIntegrated 
+                        ? ['ia1', 'ia2', 'ass1', 'ass2', 'lab1', 'lab2']
+                        : ['ia1', 'ia2', 'ass1', 'ass2'];
+
                       return (
                         <tr key={s.id}>
                           <td className="font-semibold">{s.name}</td>
                           <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>{s.usn}</td>
-                          {['test1', 'test2', 'assignment'].map((field) => (
-                            <td key={field}>
-                              <input
-                                type="number" min={0} max={10}
-                                className="form-control"
-                                style={{ width: 70, padding: '6px 8px', textAlign: 'center' }}
-                                value={m[field]}
-                                onChange={(e) => updateMark(s.id, field, e.target.value)}
-                              />
-                            </td>
-                          ))}
-                          <td className="font-bold" style={{ color: total >= 24 ? 'var(--success)' : total >= 18 ? 'var(--info)' : 'var(--danger)' }}>
+                          {fields.map((field) => {
+                            const maxVal = (field.startsWith('ia') || field.startsWith('lab')) ? 50 : 10;
+                            return (
+                              <td key={field}>
+                                <input
+                                  type="number" min={0} max={maxVal}
+                                  placeholder={`/${maxVal}`}
+                                  className="form-control"
+                                  style={{ width: 70, padding: '6px 8px', textAlign: 'center' }}
+                                  value={m[field] ?? ''}
+                                  onChange={(e) => updateMark(s.id, field, e.target.value)}
+                                />
+                              </td>
+                            );
+                          })}
+                          <td className="font-bold" style={{ color: total >= 40 ? 'var(--success)' : total >= 25 ? 'var(--info)' : 'var(--danger)' }}>
                             {total}
                           </td>
                         </tr>

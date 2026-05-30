@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
-import { listenEvents, getAttendanceByStudent, getAttendanceSummary, getAICTEByStudent } from '../../appwrite/database';
+import { listenEvents, getAttendanceByStudent, getAttendanceSummary, getAICTEByStudent, getById } from '../../appwrite/database';
 import { supabase } from '../../supabase/config';
 import { MdCheckCircle, MdStar, MdEvent, MdPerson, MdDelete, MdAdd, MdCalendarToday, MdCheckBox, MdCheckBoxOutlineBlank } from 'react-icons/md';
 import { toast } from 'react-hot-toast';
@@ -60,6 +60,17 @@ export default function StudentHome() {
     
     // Fetch SQL Todos
     fetchTodos();
+  }, [currentUser]);
+
+  // Listen for real-time task updates from the Chatbot widget
+  useEffect(() => {
+    const handleTodoUpdate = () => {
+      fetchTodos();
+    };
+    window.addEventListener('sjec-todo-updated', handleTodoUpdate);
+    return () => {
+      window.removeEventListener('sjec-todo-updated', handleTodoUpdate);
+    };
   }, [currentUser]);
 
   const checkDeadlines = (todoList) => {
@@ -225,7 +236,9 @@ export default function StudentHome() {
             <div className="stat-icon" style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>
               <MdPerson />
             </div>
-            <div className="stat-value">{userProfile?.class_id || '—'}</div>
+            <div className="stat-value" style={{ fontSize: (userProfile?.class_label || '').length > 12 ? '1.15rem' : '1.3rem' }}>
+              {userProfile?.class_label || userProfile?.class_id || '—'}
+            </div>
             <div className="stat-label">Class</div>
           </div>
           <div className="stat-card">
@@ -455,7 +468,7 @@ export default function StudentHome() {
               gap: 20,
               cursor: 'pointer',
               border: 'none'
-            }} onClick={() => window.open(import.meta.env.VITE_HOSTEL_APP_URL || 'https://hostel-management.netlify.app', '_blank')}>
+            }} onClick={() => navigate('/hostel')}>
               <div style={{ 
                 width: 50, height: 50, borderRadius: '12px', background: 'rgba(255,255,255,0.1)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem'

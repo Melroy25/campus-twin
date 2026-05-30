@@ -37,6 +37,15 @@ exports.handler = async (event, context) => {
       try {
         data = JSON.parse(text);
       } catch (e) {}
+
+      // If the user does not exist in auth, treat it as a success since they're gone
+      if (res.status === 404 || data.message?.includes('not found')) {
+        return {
+          statusCode: 200,
+          body: JSON.stringify({ success: true, message: `User ${uid} was already not in authentication.` }),
+        };
+      }
+
       return {
         statusCode: res.status,
         body: JSON.stringify({ error: data.message || 'Failed to delete user in Appwrite Auth.' })

@@ -1,0 +1,142 @@
+PROJECT OVERVIEW
+=================
+
+**Project Name:** Campus Twin
+**Repository:** e:\\Projects\\Campus Twin
+
+---
+
+1. **How the project was made**
+--------------------------------
+
+The application was built as a modern web‑based campus management system using a **React** front‑end powered by **Vite**.  The primary goals were:
+
+* Provide a fast, responsive UI for admins, teachers, mentors and students.
+* Store user authentication data in **Appwrite** (OAuth, email/password, sessions).
+* Keep student‑specific data (profile, class assignments, hostels etc.) in **Supabase** – a PostgreSQL‑backed serverless platform.
+* Use a single code‑base for both the admin portal and mentor portal with role‑based UI rendering.
+
+The development workflow roughly followed these steps:
+
+1. **Initialize the React project** – `npm create vite@latest . -- --template react` then install required dependencies.
+2. **Add Appwrite SDK** – `npm i appwrite` and create a thin wrapper (`src/appwrite/config.js`, `src/appwrite/database.js`).
+3. **Add Supabase SDK** – `npm i @supabase/supabase-js` and initialise in `src/supabase/client.js`.
+4. **Create a shared AuthContext** – Handles sign‑up, sign‑in, user profile sync (Appwrite ↔ Supabase) and exposes helper functions (`addDocumentWithId`, `updateDocument`, etc.).
+5. **Design UI pages** – Admin pages (`src/pages/admin/*`) and mentor pages (`src/pages/mentor/*`) with React‑router navigation.
+6. **Define database schema** – Collections in Appwrite (`students`, `teachers`, `admins`, `userRoles`) and tables in Supabase (`student_profiles`).
+7. **Write utility scripts** – Small Node scripts under `scratch/` to inspect Appwrite schemas and test user creation.
+8. **Configure PWA & Netlify functions** – Using `vite-plugin-pwa` and a custom Vite plugin to proxy serverless functions.
+9. **Run & test locally** – `npm run dev` serves the app at `http://localhost:3001/`.
+10. **Deploy** – Build with `npm run build` and push assets to a static host (Netlify/Vercel).  Appwrite and Supabase remain as hosted back‑ends.
+
+---
+
+2. **Technologies & Libraries Used**
+------------------------------------
+
+| Category            | Tool / Library                           | Purpose                                              |
+|---------------------|-------------------------------------------|------------------------------------------------------|
+| Front‑end           | **React 19**, **React‑Router‑Dom 7**      | UI components, routing                              |
+| Build tool          | **Vite 8**                                 | Fast dev server, ES module bundling                 |
+| UI styling          | Vanilla CSS (custom design system)        | Premium look‑and‑feel (glassmorphism, gradients…)   |
+| Authentication      | **Appwrite SDK 25**                       | Email/password auth, session management, collections |
+| Server‑less DB       | **Supabase JS 2.x**                       | PostgreSQL tables for student profiles, SQL queries |
+| Icons & utilities   | **react‑icons**, **react‑hot‑toast**      | UI icons, toast notifications                       |
+| Charts              | **chart.js**, **react‑chartjs‑2**         | Visualising stats                                   |
+| Excel import        | **xlsx**                                  | Bulk user upload via Excel files                    |
+| PWA support         | **vite‑plugin‑pwa**                       | Installable web‑app capabilities                    |
+| Netlify functions   | Custom Vite plugin (netlify‑functions)   | Server‑less function proxy during dev               |
+| Environment variables| **dotenv**                                 | Load .env values for Appwrite / Supabase config     |
+| Linting & Formatting| **ESLint**, **@eslint/js**                | Code quality                                        |
+| Node scripts        | Small test scripts in `scratch/`           | Schema inspection, test user creation               |
+
+---
+
+3. **Supabase – Commands & Reasoning**
+--------------------------------------
+
+All Supabase related work is performed via the **Supabase CLI** (`supabase`).  Below is the list of commands that were used during project setup and why they were needed.
+
+| Command | When Used | Reason / What it Does |
+|---------|-----------|------------------------|
+| `supabase init` | First time setting up the project | Creates a `supabase/` directory with `config.toml`, a local Docker Postgres instance and a `supabase/functions/` folder for edge functions. |
+| `supabase start` | During local development | Spins up the Supabase stack (Postgres, GoTrue, Realtime, Storage, Edge Functions) so the front‑end can talk to `http://localhost:54321`.
+| `supabase db reset` | When resetting the local DB (e.g., after schema changes) | Drops and recreates the local Postgres database, applying fresh migrations. |
+| `supabase db push` | After writing migration SQL files (`supabase/migrations/xxxx_init.sql`, `xxxx_add_student_profiles.sql`) | Applies the migrations to the remote Supabase project (or local if running). |
+| `supabase migration new <name>` | Whenever a new schema change is required | Generates a timestamped migration file in `supabase/migrations/`.  The developer then writes the necessary `CREATE TABLE`, `ALTER TABLE` statements. |
+| `supabase secrets set SUPABASE_ANON_KEY=...` | After creating the Supabase project | Stores the anon/public key as a secret for the Vite dev environment (read via `import.meta.env`). |
+| `supabase secrets set SUPABASE_SERVICE_ROLE_KEY=...` | For server‑side scripts (e.g., bulk upload) | Gives privileged access to perform admin‑level operations (upserts, deletes). |
+| `supabase functions deploy <function_name>` | If edge functions are added (e.g., email webhook) | Packages and deploys the function to Supabase Edge Functions. |
+| `supabase db remote set <PROJECT_REF>` | When linking the local CLI to an existing Supabase project | Points the CLI to the remote project so `supabase db push` works against the cloud DB. |
+| `supabase status` | To inspect the running containers and version | Confirms that Postgres, GoTrue, Storage, etc., are healthy. |
+
+**SQL used in migrations** (kept in `supabase/migrations/`):
+
+```sql
+-- 2024-01-01-000001_init.sql
+create table student_profiles (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  usn text not null unique,
+  email text,
+  class_id text,
+  class_label text,
+  mentor_id uuid,
+  is_hostelite boolean default false,
+  created_at timestamp with time zone default now()
+);
+
+-- add indexes for faster look‑ups
+create index on student_profiles (usn);
+create index on student_profiles (class_id);
+```
+
+These tables are accessed from the front‑end via the Supabase JS client:
+
+```js
+import { createClient } from '@supabase/supabase-js';
+export const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
+```
+
+When a new student registers, the AuthContext does:
+
+1. Create the Appwrite auth user.
+2. Build `docData` for the `students` collection (sans `personalEmail` / `isHostelite`).
+3. `addDocumentWithId(collectionName, uid, docData)` – stores core auth data.
+4. **Supabase upsert** – `supabase.from('student_profiles').upsert([...])` to keep the SQL profile in sync.
+
+---
+
+4. **Other Important Commands (npm / Appwrite)**
+----------------------------------------------
+
+| Command | Purpose |
+|---------|---------|
+| `npm install` | Installs all dependencies listed in `package.json`.
+| `npm run dev` | Starts the Vite dev server on `http://localhost:3001/`.
+| `npm run build` | Bundles the production assets.
+| `npm run lint` | Runs ESLint to enforce code style.
+| `node scratch/check_schemas.js` | Small helper script that prints the attribute keys of each Appwrite collection – used to verify schema compatibility.
+| `node scratch/test_teacher_create.js` | Demonstrates creating a teacher via the Appwrite SDK after the latest fix (removes `personalEmail` & `isHostelite`).
+
+---
+
+5. **Summary for Presentation**
+--------------------------------
+
+*The project combines a React‑Vite SPA with two backend services:*
+- **Appwrite** provides secure authentication and a set of collections (`students`, `teachers`, `admins`, `userRoles`).
+- **Supabase** holds the richer relational student profile data that benefits from PostgreSQL’s querying power.
+
+*Development flow:* `npm install → supabase init/start → npm run dev`.  All schema changes live in Supabase migration files and Appwrite attributes are managed through the Appwrite console or the `databases` SDK.
+
+When explaining the project, highlight:
+- The clean separation of auth (Appwrite) vs. domain data (Supabase).
+- Role‑based UI rendering using the `AuthContext`.
+- How the CLI commands keep the database schema version‑controlled.
+- The premium UI design (glassmorphism, gradients, micro‑animations) that meets the aesthetic requirements.
+
+Feel free to copy this file (`PROJECT_OVERVIEW.txt`) into any documentation or slide deck you prepare.

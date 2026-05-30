@@ -108,8 +108,72 @@ export default function StudentComplaintBox() {
   return (
     <Layout pageTitle="Complaint Box">
       <div style={{ maxWidth: 800, margin: '0 auto' }}>
-        <h1 className="page-title">Complaint Box</h1>
-        <p className="page-subtitle">Submit anonymous concerns or issues to the admin.</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+          <div>
+            <h1 className="page-title" style={{ margin: 0 }}>Complaint Box</h1>
+            <p className="page-subtitle" style={{ margin: '4px 0 0 0' }}>Submit anonymous concerns or issues to the admin.</p>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+            <a 
+              href="https://www.antiragging.in/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'rgba(239, 68, 68, 0.1)',
+                color: '#ef4444',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                borderRadius: '8px',
+                padding: '8px 14px',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                textDecoration: 'none',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
+            >
+              🛡️ Anti Ragging
+            </a>
+            <a 
+              href="https://tally.so/r/3jXOJx" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'rgba(168, 85, 247, 0.1)',
+                color: '#a855f7',
+                border: '1px solid rgba(168, 85, 247, 0.2)',
+                borderRadius: '8px',
+                padding: '8px 14px',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                textDecoration: 'none',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(168, 85, 247, 0.2)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(168, 85, 247, 0.1)';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
+            >
+              🚫 Anti Drug Abuse
+            </a>
+          </div>
+        </div>
 
         {/* Anonymous notice */}
         <div style={{

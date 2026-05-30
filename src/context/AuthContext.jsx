@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { loginUser, logoutUser, getCurrentUser, createNewUser } from '../appwrite/auth';
-import { getUserProfile, addDocumentWithId, updateDocument } from '../appwrite/database';
+import { loginUser, logoutUser, getCurrentUser, createNewUser, updateUserPassword } from '../appwrite/auth';
+import { getUserProfile, addDocumentWithId, updateDocument, getAll, getById } from '../appwrite/database';
 import { supabase } from '../supabase/config';
 
 const AuthContext = createContext(null);
@@ -12,6 +12,7 @@ export const usnToEmail = (usn) => `${usn.toLowerCase()}@campustwin.edu`;
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
+  const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const getMergedProfile = async (user) => {
@@ -35,6 +36,53 @@ export const AuthProvider = ({ children }) => {
         console.error('Failed to merge Supabase profile:', err);
       }
     }
+
+    // Resolve class_label and mentor_id dynamically for students if not explicitly set
+    if (profile && profile.role === 'student' && profile.class_id) {
+      try {
+        const cls = await getById('classes', profile.class_id);
+        if (cls) {
+          if (!profile.class_label) {
+            profile.class_label = cls.label || cls.name || profile.class_id;
+          }
+          if (!profile.mentor_id && cls.mentor_id) {
+            profile.mentor_id = cls.mentor_id;
+          }
+          if (cls.semester) {
+            profile.class_semester = cls.semester;
+          }
+        }
+      } catch (err) {
+        console.error('Failed to resolve dynamic class/mentor details:', err);
+      }
+    }
+
+    return profile;
+  };
+
+  const applyMaintenanceMode = (profile, branchesList) => {
+    if (!profile || profile.role === 'admin') return profile;
+    const branchCode = profile.branch_id || profile.department;
+    if (!branchCode) return profile;
+
+    const branchInfo = branchesList.find(b => b.code === branchCode);
+    if (branchInfo) {
+      const isStudent = profile.role === 'student';
+      const isTeacher = profile.role === 'teacher' || profile.role === 'mentor';
+      const blockedByRole = 
+        (isStudent && branchInfo.maintenance_students) ||
+        (isTeacher && branchInfo.maintenance_teachers);
+      const blockedByLegacy = branchInfo.maintenance_mode && !branchInfo.maintenance_students && !branchInfo.maintenance_teachers;
+
+      if (blockedByRole || blockedByLegacy) {
+        return {
+          ...profile,
+          maintenance: true,
+          maintenance_message: branchInfo.maintenance_message || 'The platform is under maintenance.',
+          maintenance_eta: branchInfo.maintenance_eta || ''
+        };
+      }
+    }
     return profile;
   };
 
@@ -47,10 +95,26 @@ export const AuthProvider = ({ children }) => {
     setCurrentUser(user);
     if (user) {
       let profile = await getMergedProfile(user);
-      if (!profile) {
+      if (profile) {
+        // Enforce role selection
+        const expectedRoles = role === 'teacher' ? ['teacher', 'mentor'] : [role];
+        if (!expectedRoles.includes(profile.role)) {
+          await logoutUser();
+          setCurrentUser(null);
+          const error = new Error(`Access denied. Please select the correct login role (you are registered as a ${profile.role}).`);
+          error.isRoleMismatch = true;
+          throw error;
+        }
+      } else {
         // Fallback if DB document is missing
         profile = { uid: user.uid, role, name: user.name || usn };
       }
+      
+      // Check maintenance mode on login
+      const branchesData = await getAll('branches');
+      setBranches(branchesData);
+      profile = applyMaintenanceMode(profile, branchesData);
+      
       setUserProfile(profile);
     }
     return result;
@@ -104,9 +168,15 @@ export const AuthProvider = ({ children }) => {
     // Clean up fields not suitable for Appwrite collections
     delete docData.personalEmail;
     delete docData.isHostelite;
-    delete docData.role;
-    // Preserve createdAt for student collection (required by schema)
-    if (profileData.role !== 'student') delete docData.usn;
+
+    if (profileData.role !== 'admin') {
+      delete docData.role;
+    }
+    
+    if (profileData.role === 'teacher' || profileData.role === 'mentor') {
+      delete docData.usn;
+      delete docData.branch_id;
+    }
     delete docData.class_assignments;
     if (profileData.role === 'teacher' || profileData.role === 'mentor') {
       docData.class_assignments = JSON.stringify(profileData.class_assignments || []);
@@ -121,6 +191,12 @@ export const AuthProvider = ({ children }) => {
       usn,
       uid,
       createdAt: now,
+      branch_id: profileData.branch_id || '',
+      is_super_admin: !!profileData.is_super_admin,
+      must_change_password: profileData.role === 'admin' ? false : (profileData.must_change_password !== undefined ? !!profileData.must_change_password : true),
+      phone: profileData.phone || '',
+      email: profileData.personalEmail || profileData.email || '',
+      initial_password: password,
     });
 
     // If mentor, update the mentor_id on the assigned classes
@@ -162,16 +238,24 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const initAuth = async () => {
+      let profile = null;
       try {
         const user = await getCurrentUser();
         setCurrentUser(user);
         if (user) {
-          let profile = await getMergedProfile(user);
+          profile = await getMergedProfile(user);
           if (!profile) {
             // Determine role from email or default to student
             const role = user.email.includes('admin') ? 'admin' : user.email.includes('teacher') ? 'teacher' : 'student';
             profile = { uid: user.uid, role, name: user.name || user.email };
           }
+        }
+        
+        const branchesData = await getAll('branches');
+        setBranches(branchesData);
+        
+        if (profile) {
+          profile = applyMaintenanceMode(profile, branchesData);
           setUserProfile(profile);
         }
       } catch (err) {
@@ -182,13 +266,36 @@ export const AuthProvider = ({ children }) => {
     initAuth();
   }, []);
 
+  // Re-check maintenance status periodically so changes take effect without re-login
+  useEffect(() => {
+    if (!currentUser || !userProfile) return;
+    const interval = setInterval(async () => {
+      try {
+        const branchesData = await getAll('branches');
+        setBranches(branchesData);
+        setUserProfile(prev => {
+          if (!prev) return prev;
+          // Strip old maintenance fields before re-applying
+          const { maintenance, maintenance_message, maintenance_eta, ...cleanProfile } = prev;
+          return applyMaintenanceMode(cleanProfile, branchesData);
+        });
+      } catch (err) {
+        // Silently ignore — will retry on next interval
+      }
+    }, 300000); // every 5 minutes – prevents aggressive re-renders that reset UI state
+    return () => clearInterval(interval);
+  }, [currentUser, userProfile?.role, userProfile?.branch_id]);
+
   const value = {
     currentUser,
     userProfile,
+    setUserProfile,
+    branches,
     loading,
     login,
     logout,
     createUser,
+    changeUserPassword: updateUserPassword,
   };
 
   return (

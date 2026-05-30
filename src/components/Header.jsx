@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { MdMenu, MdNotifications, MdDarkMode, MdLightMode } from 'react-icons/md';
+import { MdMenu, MdNotifications, MdDarkMode, MdLightMode, MdLanguage } from 'react-icons/md';
 import { useAuth } from '../context/AuthContext';
 import { listenNotifications, markNotificationRead } from '../appwrite/database';
 import logoImage from '../assets/about-section-college.jpg';
@@ -72,6 +72,19 @@ export default function Header({ onMenuClick, pageTitle }) {
         </div>
       </div>
       <div className="header-right">
+        {/* College Website Link */}
+        <a 
+          href="https://sjec.ac.in/" 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          className="notif-btn" 
+          aria-label="College Website" 
+          title="College Website"
+          style={{ marginRight: 8, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', color: 'inherit' }}
+        >
+          <MdLanguage />
+        </a>
+
         {/* Theme Toggle */}
         <button className="notif-btn" onClick={toggleTheme} aria-label="Toggle dark mode" style={{ marginRight: 8 }}>
           {isDark ? <MdLightMode /> : <MdDarkMode />}

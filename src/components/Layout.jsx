@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import ChatbotWidget from './ChatbotWidget';
 
 export default function Layout({ children, pageTitle }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -20,6 +21,7 @@ export default function Layout({ children, pageTitle }) {
           {children}
         </main>
       </div>
+      <ChatbotWidget />
     </div>
   );
 }

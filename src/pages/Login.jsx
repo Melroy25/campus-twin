@@ -5,6 +5,7 @@ import { toast } from 'react-hot-toast';
 import { MdLock, MdBadge, MdVisibility, MdVisibilityOff } from 'react-icons/md';
 import bgImage from '../assets/about-section-college.jpg';
 import logoImage from '../assets/hero.png';
+import './login.css';
 
 export default function Login() {
   const { login, userProfile } = useAuth();
@@ -17,7 +18,11 @@ export default function Login() {
 
   useEffect(() => {
     if (userProfile?.role) {
-      navigate(`/${userProfile.role}`);
+      if (userProfile.must_change_password && userProfile.role !== 'admin') {
+        navigate('/force-reset');
+      } else {
+        navigate(`/${userProfile.role}`);
+      }
     }
   }, [userProfile, navigate]);
 
@@ -28,12 +33,15 @@ export default function Login() {
     try {
       await login(usn.trim(), password, role);
     } catch (err) {
-      const msg =
-        err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password'
-          ? 'Invalid USN or password'
-          : err.code === 'auth/user-not-found'
-          ? 'No account found for this USN'
-          : 'Login failed. Please try again.';
+      const msg = err.isRoleMismatch
+        ? err.message
+        : err.code === 429 || err.status === 429
+          ? 'Too many login attempts. Please try again in 1 hour.'
+          : err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 401 || err.status === 401
+            ? 'Invalid USN or password'
+            : err.code === 'auth/user-not-found' || err.code === 404 || err.status === 404
+            ? 'No account found for this USN'
+            : err.message || 'Login failed. Please try again.';
       toast.error(msg);
       setLoading(false);
     }
@@ -118,7 +126,25 @@ export default function Login() {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Password</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label className="form-label" style={{ marginBottom: 0 }}>Password</label>
+                <button
+                  type="button"
+                  onClick={() => navigate('/forgot-password')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#4f6ef7',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    padding: 0,
+                    marginBottom: 4,
+                  }}
+                >
+                  Forgot Password?
+                </button>
+              </div>
               <div style={{ position: 'relative' }}>
                 <MdLock style={{
                   position: 'absolute', left: 12, top: '50%',
@@ -163,6 +189,58 @@ export default function Login() {
           <p style={{ marginTop: 24, fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>
             Don't have an account? Contact your department admin.
           </p>
+
+          <button
+            type="button"
+            onClick={() => navigate('/hostel/login')}
+            style={{
+              marginTop: 12,
+              width: '100%',
+              padding: '10px 16px',
+              borderRadius: 10,
+              border: 'none',
+              cursor: 'pointer',
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              color: 'white',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              transition: 'all 0.3s ease',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(16,185,129,0.3)'; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+          >
+            🏢 Switch to Hostel Warden Portal
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate('/placement/login')}
+            style={{
+              marginTop: 12,
+              width: '100%',
+              padding: '10px 16px',
+              borderRadius: 10,
+              border: 'none',
+              cursor: 'pointer',
+              background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+              color: 'white',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              transition: 'all 0.3s ease',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(99,102,241,0.3)'; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+          >
+            💼 Switch to Placement Coordinator Portal
+          </button>
         </div>
       </div>
     </div>

@@ -141,3 +141,40 @@ export const deleteUserFromAuth = async (uid) => {
   }
 };
 
+/**
+ * Update a user's password in authentication using a Netlify serverless function
+ */
+export const updateUserPassword = async (uid, password) => {
+  try {
+    const res = await fetch('/.netlify/functions/update-user-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        uid,
+        password,
+        endpoint: ENDPOINT,
+        projectId: PROJECT_ID,
+      }),
+    });
+
+    const text = await res.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (e) {
+      throw new Error(`Invalid server response: ${text.substring(0, 100)}`);
+    }
+
+    if (!res.ok) {
+      throw new Error(data.error || `Server returned status ${res.status}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Failed to update user password:', error.message);
+    throw error;
+  }
+};
+

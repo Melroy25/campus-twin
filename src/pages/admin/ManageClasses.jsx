@@ -3,32 +3,69 @@ import Layout from '../../components/Layout';
 import {
   getClasses, addClass, deleteClass, getAll, listenClasses, updateDocument
 } from '../../appwrite/database';
+import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-hot-toast';
 import {
   MdAdd, MdDelete, MdSchool, MdPeople, MdClose, MdContentCopy, MdEdit
 } from 'react-icons/md';
 
-const BRANCHES = ['CSE', 'ISE', 'ECE', 'EEE', 'ME', 'CE', 'AIDS', 'AIML'];
+const SEMESTERS = ['1st Semester', '2nd Semester', '3rd Semester', '4th Semester', '5th Semester', '6th Semester', '7th Semester', '8th Semester'];
 
 export default function AdminManageClasses() {
+  const { userProfile, branches: authBranches } = useAuth();
   const [classes, setClasses] = useState([]);
   const [teachers, setTeachers] = useState([]);
-  const [form, setForm] = useState({ branch: 'CSE', year: new Date().getFullYear(), section: 'A', mentor_id: '', advisor_id: '' });
+  const [branches, setBranches] = useState([]);
+  
+  const [form, setForm] = useState({ 
+    branch: '', 
+    year: new Date().getFullYear(), 
+    section: 'A', 
+    mentor_id: '', 
+    advisor_id: '',
+    max_credits: 24,
+    semester: '1st Semester'
+  });
+  
   const [creating, setCreating] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editClass, setEditClass] = useState(null);
   const [editMentorId, setEditMentorId] = useState('');
   const [editAdvisorId, setEditAdvisorId] = useState('');
+  const [editSemester, setEditSemester] = useState('1st Semester');
+  const [editMaxCredits, setEditMaxCredits] = useState(24);
   const [editTeacherIds, setEditTeacherIds] = useState([]);
   const [studentCounts, setStudentCounts] = useState({});
   const [createDeptFilter, setCreateDeptFilter] = useState('');
   const [editDeptFilter, setEditDeptFilter] = useState('');
+  const [selectedClassIds, setSelectedClassIds] = useState([]);
+  const [bulkSemester, setBulkSemester] = useState('1st Semester');
+  const [updatingBulk, setUpdatingBulk] = useState(false);
+
+  // Fetch branches dynamically
+  useEffect(() => {
+    getAll('branches').then((data) => {
+      setBranches(data);
+      // Pre-select first branch or branch admin's branch
+      if (userProfile?.is_super_admin) {
+        if (data.length > 0) setForm(f => ({ ...f, branch: data[0].code }));
+      } else {
+        setForm(f => ({ ...f, branch: userProfile?.branch_id || '' }));
+      }
+    });
+  }, [userProfile]);
 
   const filteredTeachersForCreate = teachers.filter((t) => {
     const isEligible = t.role === 'teacher' || t.role === 'mentor';
     if (!isEligible) return false;
+    
+    // Branch Admin can only see teachers in their branch/department
+    if (!userProfile?.is_super_admin) {
+      return t.branch_id === userProfile?.branch_id || t.department === userProfile?.branch_id;
+    }
+    
     if (createDeptFilter) {
-      return t.department === createDeptFilter;
+      return t.branch_id === createDeptFilter || t.department === createDeptFilter;
     }
     return true;
   });
@@ -36,17 +73,29 @@ export default function AdminManageClasses() {
   const filteredTeachersForEdit = teachers.filter((t) => {
     const isEligible = t.role === 'teacher' || t.role === 'mentor';
     if (!isEligible) return false;
+    
+    // Branch Admin can only see teachers in their branch/department
+    if (!userProfile?.is_super_admin) {
+      return t.branch_id === userProfile?.branch_id || t.department === userProfile?.branch_id;
+    }
+
     if (editDeptFilter) {
-      return t.department === editDeptFilter;
+      return t.branch_id === editDeptFilter || t.department === editDeptFilter;
     }
     return true;
   });
 
-
-  // Helper functions for class edit modal
-  // Load teachers with roles and listen for class updates
+  // Load teachers and classes
   useEffect(() => {
-    const unsub = listenClasses(setClasses);
+    const unsub = listenClasses((allClasses) => {
+      if (userProfile?.is_super_admin) {
+        setClasses(allClasses);
+      } else {
+        const filtered = allClasses.filter(c => c.branch === userProfile?.branch_id || c.branch_id === userProfile?.branch_id);
+        setClasses(filtered);
+      }
+    });
+
     Promise.all([getAll('teachers'), getAll('userRoles')])
       .then(([teachersList, rolesList]) => {
         const roleMap = {};
@@ -77,7 +126,7 @@ export default function AdminManageClasses() {
       })
       .catch((err) => console.error(err));
     return unsub;
-  }, []);
+  }, [userProfile]);
 
   const updateMentorClassAssignments = async (mentorId, classId, action) => {
     if (!mentorId) return;
@@ -98,7 +147,6 @@ export default function AdminManageClasses() {
         class_assignments: JSON.stringify(assignments)
       });
       
-      // Update local state teachers list
       setTeachers(prev => prev.map(t => 
         (t.id === mentor.id) ? { ...t, class_assignments: assignments } : t
       ));
@@ -111,7 +159,8 @@ export default function AdminManageClasses() {
     setEditClass(cls);
     setEditMentorId(cls.mentor_id || '');
     setEditAdvisorId(cls.advisor_id || '');
-    // initialize teacher selection (not persisted)
+    setEditSemester(cls.semester || '1st Semester');
+    setEditMaxCredits(cls.max_credits !== undefined ? cls.max_credits : 24);
     setEditTeacherIds([]);
     setEditModalOpen(true);
   };
@@ -121,6 +170,8 @@ export default function AdminManageClasses() {
     setEditClass(null);
     setEditMentorId('');
     setEditAdvisorId('');
+    setEditSemester('1st Semester');
+    setEditMaxCredits(24);
     setEditTeacherIds([]);
   };
 
@@ -132,10 +183,11 @@ export default function AdminManageClasses() {
     try {
       await updateDocument('classes', editClass.id, {
         mentor_id: editMentorId || '',
-        advisor_id: editAdvisorId || ''
+        advisor_id: editAdvisorId || '',
+        semester: editSemester,
+        max_credits: Number(editMaxCredits)
       });
 
-      // Handle mentor change sync
       const oldMentorId = editClass.mentor_id;
       const newMentorId = editMentorId;
       if (oldMentorId !== newMentorId) {
@@ -147,10 +199,9 @@ export default function AdminManageClasses() {
         }
       }
 
-      // Update local state
       setClasses((prev) =>
         prev.map((c) =>
-          c.id === editClass.id ? { ...c, mentor_id: editMentorId, advisor_id: editAdvisorId } : c
+          c.id === editClass.id ? { ...c, mentor_id: editMentorId, advisor_id: editAdvisorId, semester: editSemester, max_credits: Number(editMaxCredits) } : c
         )
       );
       toast.success('Class updated successfully');
@@ -160,7 +211,6 @@ export default function AdminManageClasses() {
     closeEdit();
   };
 
-  // Fetch student count per class for display
   useEffect(() => {
     if (classes.length === 0) return;
     getAll('students').then((allStudents) => {
@@ -180,24 +230,34 @@ export default function AdminManageClasses() {
     }
     setCreating(true);
     try {
+      const createdLabel = `${form.branch} ${form.year} - Sec ${form.section.toUpperCase()}`;
       await addClass({
         branch: form.branch,
         year: String(form.year),
         section: form.section.toUpperCase(),
         mentor_id: form.mentor_id || '',
         advisor_id: form.advisor_id || '',
-        label: `${form.branch} ${form.year} - Sec ${form.section.toUpperCase()}`,
+        semester: form.semester || '1st Semester',
+        max_credits: Number(form.max_credits || 24),
+        label: createdLabel,
       });
-      // Sync mentor class assignments if mentor selected
+      
       if (form.mentor_id) {
-        // Fetch the newly created class ID (assuming addClass returns the created class)
-        const newClass = await getAll('classes').then(clsList => clsList.find(c => c.label === `${form.branch} ${form.year} - Sec ${form.section.toUpperCase()}`));
+        const newClass = await getAll('classes').then(clsList => clsList.find(c => c.label === createdLabel));
         if (newClass) {
           await updateMentorClassAssignments(form.mentor_id, newClass.id, 'add');
         }
       }
       toast.success('Class created!');
-      setForm({ branch: 'CSE', year: new Date().getFullYear(), section: 'A', mentor_id: '', advisor_id: '' });
+      setForm(prev => ({ 
+        ...prev, 
+        year: new Date().getFullYear(), 
+        section: 'A', 
+        mentor_id: '', 
+        advisor_id: '',
+        max_credits: 24,
+        semester: '1st Semester'
+      }));
     } catch (err) {
       toast.error(err.message || 'Failed to create class');
     } finally {
@@ -221,6 +281,51 @@ export default function AdminManageClasses() {
     toast.success('Class ID copied!');
   };
 
+  const toggleClassSelection = (classId) => {
+    setSelectedClassIds(prev => 
+      prev.includes(classId) 
+        ? prev.filter(id => id !== classId) 
+        : [...prev, classId]
+    );
+  };
+
+  const handleSelectAllClasses = () => {
+    if (selectedClassIds.length === classes.length) {
+      setSelectedClassIds([]);
+    } else {
+      setSelectedClassIds(classes.map(c => c.id));
+    }
+  };
+
+  const handleBulkUpdateSemester = async () => {
+    if (selectedClassIds.length === 0) {
+      return toast.error('Please select at least one class first');
+    }
+    if (!window.confirm(`Update semester to "${bulkSemester}" for all ${selectedClassIds.length} selected classes?`)) {
+      return;
+    }
+    setUpdatingBulk(true);
+    try {
+      for (const classId of selectedClassIds) {
+        await updateDocument('classes', classId, {
+          semester: bulkSemester
+        });
+      }
+      
+      setClasses(prev => prev.map(c => 
+        selectedClassIds.includes(c.id) ? { ...c, semester: bulkSemester } : c
+      ));
+      
+      toast.success(`Updated semester for ${selectedClassIds.length} classes successfully!`);
+      setSelectedClassIds([]);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to update semester for some classes');
+    } finally {
+      setUpdatingBulk(false);
+    }
+  };
+
   return (
     <Layout pageTitle="Manage Classes">
       <h1 className="page-title">Manage Classes</h1>
@@ -233,8 +338,17 @@ export default function AdminManageClasses() {
           <form onSubmit={handleCreate}>
             <div className="form-group">
               <label className="form-label">Branch *</label>
-              <select className="form-control" value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })}>
-                {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+              <select 
+                className="form-control" 
+                value={form.branch} 
+                onChange={(e) => setForm({ ...form, branch: e.target.value })}
+                disabled={!userProfile?.is_super_admin}
+              >
+                {userProfile?.is_super_admin ? (
+                  branches.map((b) => <option key={b.id} value={b.code}>{b.name} ({b.code})</option>)
+                ) : (
+                  <option value={userProfile?.branch_id}>{userProfile?.branch_id}</option>
+                )}
               </select>
             </div>
             <div className="form-group">
@@ -257,11 +371,26 @@ export default function AdminManageClasses() {
               />
             </div>
             <div className="form-group">
-                <label className="form-label">Filter Teachers by Department</label>
-                <select className="form-control" style={{ marginBottom: 12 }} value={createDeptFilter} onChange={(e) => setCreateDeptFilter(e.target.value)}>
-                  <option value="">All Departments</option>
-                  {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
-                </select>
+              <label className="form-label">Semester *</label>
+              <select 
+                className="form-control"
+                value={form.semester}
+                onChange={(e) => setForm({ ...form, semester: e.target.value })}
+                required
+              >
+                {SEMESTERS.map(sem => <option key={sem} value={sem}>{sem}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+                {userProfile?.is_super_admin && (
+                  <>
+                    <label className="form-label">Filter Teachers by Department</label>
+                    <select className="form-control" style={{ marginBottom: 12 }} value={createDeptFilter} onChange={(e) => setCreateDeptFilter(e.target.value)}>
+                      <option value="">All Departments</option>
+                      {branches.map((b) => <option key={b.id} value={b.code}>{b.code}</option>)}
+                    </select>
+                  </>
+                )}
 
                 <label className="form-label">Assign Mentor (optional)</label>
                 <select className="form-control" value={form.mentor_id} onChange={(e) => setForm({ ...form, mentor_id: e.target.value })}>
@@ -277,16 +406,99 @@ export default function AdminManageClasses() {
                     <option key={t.id} value={t.id}>{t.name} ({t.usn}) {t.department ? `[${t.department}]` : ''}</option>
                   ))}
                 </select>
+                <label className="form-label" style={{ marginTop: '12px' }}>Max Credits Limit *</label>
+                <input
+                  type="number"
+                  className="form-control"
+                  min="0"
+                  max="100"
+                  value={form.max_credits}
+                  onChange={(e) => setForm({ ...form, max_credits: parseInt(e.target.value) || 0 })}
+                  required
+                />
             </div>
-            <button type="submit" className="btn btn-primary btn-block" disabled={creating}>
+            <button type="submit" className="btn btn-primary btn-block" disabled={creating || !form.branch}>
               {creating ? 'Creating...' : 'Create Class'}
             </button>
           </form>
         </div>
 
         {/* Class List */}
-        <div className="card" style={{ maxHeight: 560, overflowY: 'auto' }}>
-          <h3 className="mb-16"><MdSchool style={{ verticalAlign: 'middle' }} /> All Classes ({classes.length})</h3>
+        <div className="card" style={{ maxHeight: 600, overflowY: 'auto' }}>
+          <h3 className="mb-16" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span><MdSchool style={{ verticalAlign: 'middle', marginRight: 8, color: 'var(--primary)' }} /> All Classes ({classes.length})</span>
+          </h3>
+
+          {classes.length > 0 && (
+            <div style={{
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              padding: '12px 16px',
+              marginBottom: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              boxShadow: 'var(--shadow-sm)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <input 
+                    type="checkbox" 
+                    id="selectAllClasses"
+                    checked={classes.length > 0 && selectedClassIds.length === classes.length}
+                    onChange={handleSelectAllClasses}
+                    style={{ width: 18, height: 18, cursor: 'pointer', accentColor: 'var(--primary)' }}
+                  />
+                  <label htmlFor="selectAllClasses" style={{ fontSize: '0.88rem', fontWeight: 700, cursor: 'pointer', color: 'var(--text-primary)' }}>
+                    Select All Classes ({selectedClassIds.length} chosen)
+                  </label>
+                </div>
+                
+                {selectedClassIds.length > 0 && (
+                  <button 
+                    className="btn btn-sm btn-ghost" 
+                    style={{ color: 'var(--danger)', fontSize: '0.78rem', padding: '2px 8px' }}
+                    onClick={() => setSelectedClassIds([])}
+                  >
+                    Clear Selection
+                  </button>
+                )}
+              </div>
+
+              {selectedClassIds.length > 0 && (
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 10, 
+                  flexWrap: 'wrap', 
+                  borderTop: '1px solid var(--border)', 
+                  paddingTop: 12 
+                }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                    Bulk Update Semester:
+                  </span>
+                  <select 
+                    className="form-control" 
+                    style={{ width: 160, padding: '4px 8px', fontSize: '0.82rem', height: 'auto' }}
+                    value={bulkSemester}
+                    onChange={(e) => setBulkSemester(e.target.value)}
+                  >
+                    {SEMESTERS.map(sem => <option key={sem} value={sem}>{sem}</option>)}
+                  </select>
+                  <button 
+                    className="btn btn-sm btn-primary"
+                    style={{ padding: '6px 14px', fontSize: '0.8rem', minHeight: 'auto' }}
+                    onClick={handleBulkUpdateSemester}
+                    disabled={updatingBulk}
+                  >
+                    {updatingBulk ? 'Updating...' : 'Apply changes'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {classes.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon"><MdSchool /></div>
@@ -294,45 +506,64 @@ export default function AdminManageClasses() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {classes.map((cls) => (
-                <div key={cls.id} style={{
-                  padding: '14px 16px',
-                  border: '1.5px solid var(--border)',
-                  borderRadius: 'var(--radius)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                }}>
-                  {/* Color dot by branch */}
-                  <div style={{
-                    width: 42, height: 42, borderRadius: '50%',
-                    background: 'var(--primary-light)', color: 'var(--primary)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontWeight: 700, fontSize: '0.76rem', flexShrink: 0,
-                  }}>{cls.branch}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="font-semibold" style={{ fontSize: '0.92rem' }}>{cls.label}</div>
-                    <div style={{ display: 'flex', gap: 12, marginTop: 4, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                      <span><MdPeople style={{ verticalAlign: 'middle', marginRight: 3 }} />{studentCounts[cls.id] ?? '…'} students</span>
-                      <span>Mentor: {mentorName(cls.mentor_id)}</span>
+              {classes.map((cls) => {
+                const isSelected = selectedClassIds.includes(cls.id);
+                return (
+                  <div key={cls.id} style={{
+                    padding: '14px 16px',
+                    border: isSelected ? '1.5px solid var(--primary)' : '1.5px solid var(--border)',
+                    background: isSelected ? 'var(--primary-light)' : 'transparent',
+                    borderRadius: 'var(--radius)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    transition: 'all 0.2s ease',
+                    boxShadow: isSelected ? 'var(--shadow-md)' : 'none'
+                  }}>
+                    <input 
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleClassSelection(cls.id)}
+                      style={{ width: 18, height: 18, cursor: 'pointer', accentColor: 'var(--primary)', flexShrink: 0 }}
+                    />
+                    <div style={{
+                      width: 42, height: 42, borderRadius: '50%',
+                      background: isSelected ? 'var(--primary)' : 'var(--primary-light)', 
+                      color: isSelected ? 'white' : 'var(--primary)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 700, fontSize: '0.76rem', flexShrink: 0,
+                      transition: 'all 0.2s ease'
+                    }}>{cls.branch}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="font-semibold" style={{ fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span>{cls.label}</span>
+                        <span style={{ fontSize: '0.7rem', background: 'var(--warning-light)', color: 'var(--warning-dark)', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>
+                          {cls.semester || '1st Semester'}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 12, marginTop: 4, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        <span><MdPeople style={{ verticalAlign: 'middle', marginRight: 3 }} />{studentCounts[cls.id] ?? '…'} students</span>
+                        <span>Mentor: {mentorName(cls.mentor_id)}</span>
+                        <span>Credits: {cls.max_credits ?? 24} cr</span>
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2, fontFamily: 'monospace' }}>
+                        ID: {cls.id}
+                      </div>
                     </div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2, fontFamily: 'monospace' }}>
-                      ID: {cls.id}
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <button className="btn btn-sm btn-ghost" onClick={() => handleCopyId(cls.id)} title="Copy Class ID">
+                        <MdContentCopy />
+                      </button>
+                      <button className="btn btn-sm btn-primary" onClick={() => openEdit(cls)} title="Edit class">
+                        <MdEdit />
+                      </button>
+                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(cls)} title="Delete class">
+                        <MdDelete />
+                      </button>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button className="btn btn-sm btn-ghost" onClick={() => handleCopyId(cls.id)} title="Copy Class ID">
-                      <MdContentCopy />
-                    </button>
-                    <button className="btn btn-sm btn-primary" onClick={() => openEdit(cls)} title="Edit class">
-                      <MdEdit />
-                    </button>
-                    <button className="btn btn-sm btn-danger" onClick={() => handleDelete(cls)} title="Delete class">
-                      <MdDelete />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -344,16 +575,20 @@ export default function AdminManageClasses() {
           <div className="modal-box">
             <h3 className="font-bold text-lg mb-4">Edit Class – {editClass.label}</h3>
             <div className="form-group mb-3">
-               <label className="form-label">Filter Teachers by Department</label>
-               <select
-                 className="form-control"
-                 style={{ marginBottom: 12 }}
-                 value={editDeptFilter}
-                 onChange={(e) => setEditDeptFilter(e.target.value)}
-               >
-                 <option value="">All Departments</option>
-                 {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
-               </select>
+               {userProfile?.is_super_admin && (
+                 <>
+                   <label className="form-label">Filter Teachers by Department</label>
+                   <select
+                     className="form-control"
+                     style={{ marginBottom: 12 }}
+                     value={editDeptFilter}
+                     onChange={(e) => setEditDeptFilter(e.target.value)}
+                   >
+                     <option value="">All Departments</option>
+                     {branches.map((b) => <option key={b.id} value={b.code}>{b.code}</option>)}
+                   </select>
+                 </>
+               )}
 
                <label className="form-label">Assign Mentor</label>
                <select
@@ -381,36 +616,33 @@ export default function AdminManageClasses() {
                    </option>
                  ))}
                </select>
+               <label className="form-label" style={{ marginTop: '12px' }}>Semester *</label>
+               <select
+                 className="form-control"
+                 value={editSemester}
+                 onChange={(e) => setEditSemester(e.target.value)}
+                 required
+               >
+                 {SEMESTERS.map(sem => <option key={sem} value={sem}>{sem}</option>)}
+               </select>
+               <label className="form-label" style={{ marginTop: '12px' }}>Max Credits Limit *</label>
+               <input
+                 type="number"
+                 className="form-control"
+                 min="0"
+                 max="100"
+                 value={editMaxCredits}
+                 onChange={(e) => setEditMaxCredits(parseInt(e.target.value) || 0)}
+                 required
+               />
             </div>
-            <div className="form-group mb-3">
-              <label className="form-label">Assign Teachers (optional)</label>
-              <div className="flex flex-col max-h-48 overflow-y-auto">
-                {teachers.filter((t) => t.role === 'teacher').map((t) => (
-                  <label key={t.id} className="inline-flex items-center mb-1">
-                    <input
-                      type="checkbox"
-                      className="form-checkbox"
-                      checked={editTeacherIds.includes(t.id)}
-                      onChange={(e) => {
-                        const newIds = e.target.checked
-                          ? [...editTeacherIds, t.id]
-                          : editTeacherIds.filter((id) => id !== t.id);
-                        setEditTeacherIds(newIds);
-                      }}
-                    />
-                    <span className="ml-2">{t.name} ({t.usn})</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2" style={{ marginTop: 20 }}>
               <button className="btn btn-sm btn-ghost" onClick={closeEdit}>Cancel</button>
               <button className="btn btn-sm btn-primary" onClick={saveEdit}>Save</button>
             </div>
           </div>
         </div>
       )}
-      {/* End Edit Modal */}
 
       {/* Info box */}
       <div className="card" style={{ marginTop: 24, background: 'var(--info-light)', borderColor: 'var(--info)' }}>

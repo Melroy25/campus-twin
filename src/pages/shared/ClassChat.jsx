@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
 import { client, DATABASE_ID, PROJECT_ID, ENDPOINT } from '../../appwrite/config';
-import { queryDocuments, getById, addDocument, updateDocument, getAll, where } from '../../appwrite/database';
+import { queryDocuments, getById, addDocument, updateDocument, getAll, where, deleteDocument } from '../../appwrite/database';
 import { uploadFile } from '../../appwrite/storage';
 import { toast } from 'react-hot-toast';
 import {
@@ -14,6 +14,7 @@ import {
 export default function ClassChat() {
   const { currentUser, userProfile } = useAuth();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const classIdParam = searchParams.get('class_id');
 
   const [loading, setLoading] = useState(true);
@@ -70,20 +71,16 @@ export default function ClassChat() {
           // Mentor/Teacher: access to classes they mentor OR advise OR teach OR where they are invited
           const classAssignments = userProfile.class_assignments || [];
           filtered = activeChats.filter(c => {
-            const isMentor = c.mentor_id === uid;
             const isAdvisor = c.advisor_id === uid;
-            const isAssigned = classAssignments.some(a => a.class_id === c.id);
             const additionalList = c.chat_additional_members || [];
             const isInvited = additionalList.includes(uid);
-            return isMentor || isAdvisor || isAssigned || isInvited;
+            return isAdvisor || isInvited;
           });
         } else {
-          // Student: access to their own class OR classes where they are invited
+          // Student: access ONLY if they are invited
           filtered = activeChats.filter(c => {
-            const isOwnClass = c.id === userProfile.class_id;
             const additionalList = c.chat_additional_members || [];
-            const isInvited = additionalList.includes(uid);
-            return isOwnClass || isInvited;
+            return additionalList.includes(uid);
           });
         }
 
@@ -279,13 +276,27 @@ export default function ClassChat() {
 
     try {
       const currentList = selectedClass.chat_additional_members || [];
-      if (currentList.includes(selectedInviteUid)) {
-        toast.error("User is already a member of this chat!");
-        setSavingMember(false);
-        return;
+      let updatedList = [...currentList];
+
+      if (selectedInviteUid === 'all') {
+        const inviteable = getInviteableUsers().map(u => u.uid || u.id);
+        if (inviteable.length === 0) {
+          toast.error("No users to add!");
+          setSavingMember(false);
+          return;
+        }
+        inviteable.forEach(uid => {
+          if (!updatedList.includes(uid)) updatedList.push(uid);
+        });
+      } else {
+        if (currentList.includes(selectedInviteUid)) {
+          toast.error("User is already a member of this chat!");
+          setSavingMember(false);
+          return;
+        }
+        updatedList.push(selectedInviteUid);
       }
 
-      const updatedList = [...currentList, selectedInviteUid];
       await updateDocument('classes', selectedClass.id, {
         chat_additional_members: updatedList
       });
@@ -295,7 +306,7 @@ export default function ClassChat() {
       setSelectedClass(updatedClass);
       setAccessibleClasses(prev => prev.map(c => c.id === selectedClass.id ? updatedClass : c));
 
-      toast.success("Member added successfully!");
+      toast.success(selectedInviteUid === 'all' ? "All members added successfully!" : "Member added successfully!");
       setSelectedInviteUid('');
     } catch (err) {
       toast.error("Failed to add member");
@@ -346,7 +357,7 @@ export default function ClassChat() {
 
   const getUserNameByUid = (uid) => {
     const s = allStudents.find(st => st.uid === uid || st.id === uid);
-    if (s) return `${s.name} (Student - ${s.class_id})`;
+    if (s) return `${s.name} (Student - ${s.usn || s.class_id})`;
     const t = allTeachers.find(th => th.uid === uid || th.id === uid);
     if (t) return `${t.name} (${t.role === 'mentor' ? 'Mentor' : 'Teacher'})`;
     const a = allAdmins.find(ad => ad.uid === uid || ad.id === uid);
@@ -363,17 +374,14 @@ export default function ClassChat() {
   const getInviteableUsers = () => {
     const currentAdditional = selectedClass?.chat_additional_members || [];
     if (inviteType === 'student') {
-      // Exclude students who are naturally in the class
       return allStudents.filter(s => 
-        s.class_id !== selectedClass?.id && 
         !currentAdditional.includes(s.uid) &&
         !currentAdditional.includes(s.id)
       );
     } else {
-      // Exclude class mentor
       return allTeachers.filter(t => 
-        t.uid !== selectedClass?.mentor_id && 
-        t.id !== selectedClass?.mentor_id &&
+        t.uid !== selectedClass?.advisor_id && 
+        t.id !== selectedClass?.advisor_id &&
         !currentAdditional.includes(t.uid) &&
         !currentAdditional.includes(t.id)
       );
@@ -382,6 +390,49 @@ export default function ClassChat() {
 
   return (
     <Layout pageTitle="Class Chat">
+      {userProfile?.maintenance && (
+        <div style={{
+          background: 'linear-gradient(135deg, #b91c1c, #991b1b)',
+          color: '#ffffff',
+          padding: '12px 20px',
+          borderRadius: 'var(--radius)',
+          marginBottom: '16px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          boxShadow: '0 4px 12px rgba(185, 28, 28, 0.2)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          fontFamily: "'Inter', sans-serif"
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '1.4rem', display: 'flex', alignItems: 'center' }}>⚠️</span>
+            <div>
+              <strong style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600 }}>System Under Maintenance</strong>
+              <span style={{ fontSize: '0.8rem', opacity: 0.9 }}>
+                Only Chat and Document Cabinet are currently accessible. All other system functions are paused.
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/maintenance')}
+            style={{
+              background: 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              color: '#fff',
+              padding: '6px 12px',
+              borderRadius: 'var(--radius)',
+              cursor: 'pointer',
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              transition: 'background 0.2s',
+            }}
+            onMouseEnter={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.3)'}
+            onMouseLeave={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.2)'}
+          >
+            Return to Status
+          </button>
+        </div>
+      )}
       {loading ? (
         <div className="loader-container" style={{ minHeight: 300 }}><div className="loader" /></div>
       ) : accessibleClasses.length === 0 ? (
@@ -503,7 +554,8 @@ export default function ClassChat() {
                     const isMentor = m.sender_role === 'mentor';
                     const isAdminMsg = m.sender_role === 'admin';
                     const isAdvisorMsg = selectedClass && (m.sender_id === selectedClass.advisor_id);
-                    const canDelete = isOwn || isClassAdvisor || isAdmin;
+                    // Users can delete their own messages, class advisors, class mentors, and admins
+    const canDelete = isOwn || isClassAdvisor || isClassMentor || isAdmin;
                     
                     return (
                       <div
@@ -870,6 +922,7 @@ export default function ClassChat() {
                       style={{ fontSize: '0.82rem', flex: 1 }}
                     >
                       <option value="">-- Select {inviteType === 'student' ? 'Student' : 'Teacher'} --</option>
+                      <option value="all">-- Select All --</option>
                       {getInviteableUsers().map(user => (
                         <option key={user.uid || user.id} value={user.uid || user.id}>
                           {user.name} {user.usn ? `(${user.usn})` : ''}
@@ -894,7 +947,7 @@ export default function ClassChat() {
                   Current Members
                 </h4>
                 
-                {/* Mentor Section */}
+                {/* Advisor Section */}
                 {!selectedClass.is_staff_chat && (
                   <div style={{
                     padding: '8px 10px',
@@ -907,8 +960,7 @@ export default function ClassChat() {
                     fontSize: '0.85rem'
                   }}>
                     <MdSecurity style={{ color: 'var(--success)' }} />
-                    <span style={{ fontWeight: 600 }}>Mentor: {getUserNameByUid(selectedClass.mentor_id)}</span>
-                    <span style={{ marginLeft: '12px' }}>Advisor: {advisorName(selectedClass.advisor_id)}</span>
+                    <span style={{ fontWeight: 600 }}>Advisor: {advisorName(selectedClass.advisor_id)}</span>
                   </div>
                 )}
 
@@ -958,34 +1010,6 @@ export default function ClassChat() {
                   </div>
                 ) : (
                   <>
-                    {/* Class Students Section */}
-                    <div style={{ marginBottom: 16 }}>
-                      <h5 style={{ margin: '12px 0 6px 0', fontSize: '0.78rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-                        Class Students (Official Members)
-                      </h5>
-                      {allStudents.filter(s => s.class_id === selectedClass.id).length === 0 ? (
-                        <div style={{ padding: '6px 10px', fontSize: '0.82rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                          No students in this class section yet.
-                        </div>
-                      ) : (
-                        allStudents.filter(s => s.class_id === selectedClass.id).map(s => (
-                          <div key={s.id || s.uid} style={{
-                            padding: '6px 10px',
-                            borderBottom: '1px solid var(--border)',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            fontSize: '0.82rem'
-                          }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <MdPerson style={{ color: 'var(--success)' }} />
-                              <span>{s.name} {s.usn ? `(${s.usn})` : ''}</span>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-
                     {/* Additional Members List */}
                     {(selectedClass.chat_additional_members || []).length > 0 && (
                       <div style={{ marginBottom: 16 }}>
@@ -1026,7 +1050,6 @@ export default function ClassChat() {
                   </>
                 )}
 
-                {/* Notice for Class Students */}
                 <div style={{
                   padding: '10px 12px',
                   background: 'var(--surface-2)',
@@ -1038,7 +1061,7 @@ export default function ClassChat() {
                   {selectedClass.is_staff_chat ? (
                     <span>ℹ️ All teachers, mentors, and administrators are automatically members of this chat room and can read and send messages.</span>
                   ) : (
-                    <span>ℹ️ All official students of <strong>{selectedClass.label}</strong> are automatically members of this chat room and can read and send messages.</span>
+                    <span>ℹ️ Only the advisor is in the room initially. Add members manually.</span>
                   )}
                 </div>
 
