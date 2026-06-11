@@ -1,15 +1,25 @@
 import { useState, useEffect, useRef } from 'react';
 import { MdMenu, MdNotifications, MdDarkMode, MdLightMode, MdLanguage } from 'react-icons/md';
 import { useAuth } from '../context/AuthContext';
-import { listenNotifications, markNotificationRead } from '../appwrite/database';
 import logoImage from '../assets/about-section-college.jpg';
+import { useNotifications } from '../hooks/useNotifications';
+import NotificationDropdown from './NotificationDropdown';
 
 export default function Header({ onMenuClick, pageTitle }) {
   const { userProfile, currentUser } = useAuth();
   const [showNotif, setShowNotif] = useState(false);
-  const [notifications, setNotifications] = useState([]);
   const [isDark, setIsDark] = useState(false);
   const notifRef = useRef(null);
+
+  const {
+    notifications,
+    unreadCount,
+    resetUnreadCount,
+    dismissNotification,
+    clearAll,
+    pendingDismissList,
+    undoDismiss
+  } = useNotifications(currentUser?.uid);
 
   useEffect(() => {
     const saved = localStorage.getItem('theme');
@@ -31,18 +41,6 @@ export default function Header({ onMenuClick, pageTitle }) {
     }
   };
 
-  useEffect(() => {
-    if (!currentUser?.uid) return;
-    const unsub = listenNotifications(currentUser.uid, (docs) => setNotifications(docs));
-    return unsub;
-  }, [currentUser]);
-
-  const unreadCount = notifications.filter((n) => !n.read_status).length;
-
-  const handleNotifClick = async (notif) => {
-    if (!notif.read_status) await markNotificationRead(notif.id);
-  };
-
   // Close on outside click
   useEffect(() => {
     const handler = (e) => {
@@ -53,12 +51,6 @@ export default function Header({ onMenuClick, pageTitle }) {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
-
-  const formatTime = (ts) => {
-    if (!ts) return '';
-    const date = ts.toDate ? ts.toDate() : new Date(ts);
-    return date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  };
 
   return (
     <header className="header">
@@ -94,7 +86,11 @@ export default function Header({ onMenuClick, pageTitle }) {
         <div ref={notifRef} style={{ position: 'relative' }}>
           <button
             className="notif-btn"
-            onClick={() => setShowNotif((v) => !v)}
+            onClick={() => setShowNotif((v) => {
+              const next = !v;
+              if (next) resetUnreadCount();
+              return next;
+            })}
             aria-label="Notifications"
           >
             <MdNotifications />
@@ -104,30 +100,14 @@ export default function Header({ onMenuClick, pageTitle }) {
           </button>
 
           {showNotif && (
-            <div className="notif-dropdown">
-              <div className="notif-header">
-                <h4>Notifications</h4>
-                {unreadCount > 0 && (
-                  <span className="badge badge-primary">{unreadCount} new</span>
-                )}
-              </div>
-              {notifications.length === 0 ? (
-                <div className="empty-state" style={{ padding: '24px' }}>
-                  <p>No notifications yet</p>
-                </div>
-              ) : (
-                notifications.map((n) => (
-                  <div
-                    key={n.id}
-                    className={`notif-item ${!n.read_status ? 'unread' : ''}`}
-                    onClick={() => handleNotifClick(n)}
-                  >
-                    <p>{n.message}</p>
-                    <div className="notif-time">{formatTime(n.createdAt)}</div>
-                  </div>
-                ))
-              )}
-            </div>
+            <NotificationDropdown
+              notifications={notifications}
+              dismissNotification={dismissNotification}
+              clearAll={clearAll}
+              pendingDismissList={pendingDismissList}
+              undoDismiss={undoDismiss}
+              onClose={() => setShowNotif(false)}
+            />
           )}
         </div>
       </div>

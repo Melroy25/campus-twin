@@ -30,6 +30,33 @@ exports.handler = async (event, context) => {
       };
     }
 
+    const sdk = require('node-appwrite');
+    const client = new sdk.Client()
+      .setEndpoint(endpoint)
+      .setProject(projectId)
+      .setKey(apiKey);
+    
+    const databases = new sdk.Databases(client);
+    const databaseId = process.env.VITE_APPWRITE_DATABASE_ID || '6a084e9b00061aea385a';
+
+    try {
+      const userRoleDoc = await databases.getDocument(databaseId, 'userRoles', uid);
+      if (userRoleDoc && (userRoleDoc.is_super_admin || userRoleDoc.usn === 'admin' || userRoleDoc.email === 'admin@campustwin.edu')) {
+        return {
+          statusCode: 403,
+          body: JSON.stringify({ error: 'The Super Admin password cannot be changed.' })
+        };
+      }
+    } catch (dbErr) {
+      console.warn('Could not retrieve user role doc in update password function:', dbErr.message);
+      if (uid === '6a0e19cb002f44b57eef') {
+        return {
+          statusCode: 403,
+          body: JSON.stringify({ error: 'The Super Admin password cannot be changed.' })
+        };
+      }
+    }
+
     const res = await fetch(`${endpoint}/users/${uid}/password`, {
       method: 'PATCH',
       headers: {

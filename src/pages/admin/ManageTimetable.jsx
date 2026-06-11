@@ -11,7 +11,7 @@ import { MdAdd, MdEdit, MdDelete, MdClose, MdFlag, MdCheck, MdSend } from 'react
 import { uploadFile } from '../../appwrite/storage';
 import { supabase } from '../../supabase/config';
 import { useAuth } from '../../context/AuthContext';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const EMPTY_FORM = { class_id: '', subject: '', teacher: '', room: '', time: '', day: 'Monday', status: 'normal', start_time: '', end_time: '' };
 
@@ -48,6 +48,7 @@ export default function AdminManageTimetable() {
   const { userProfile } = useAuth();
   const isSuperAdmin = !!userProfile?.is_super_admin;
   const location = useLocation();
+  const navigate = useNavigate();
   const [classes, setClasses] = useState([]);
   const [classId, setClassId] = useState('');
   const [entries, setEntries] = useState([]);
@@ -608,7 +609,7 @@ export default function AdminManageTimetable() {
       <p className="page-subtitle">
         {isSuperAdmin 
           ? "Configure Calendar of Events and upload AICTE guideline documents" 
-          : "Visual grid editor — click cells to add/edit entries"}
+          : "Visual weekly schedule grid — click 'Make Timetable' to auto-generate or modify"}
       </p>
 
       {/* Class Selector */}
@@ -635,11 +636,30 @@ export default function AdminManageTimetable() {
           <button className={`btn ${tab === 'aicte' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('aicte')}>📑 AICTE Guidelines</button>
         </div>
       ) : (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 24, overflowX: 'auto' }}>
-          <button className={`btn ${tab === 'timetable' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('timetable')}>📊 Grid View</button>
-          <button className={`btn ${tab === 'pdf' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('pdf')}>📄 PDF</button>
-          <button className={`btn ${tab === 'coe' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('coe')}>📅 Calendar of Events</button>
-          <button className={`btn ${tab === 'updates' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('updates')}>📝 Updates</button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
+            <button className={`btn ${tab === 'timetable' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('timetable')}>📊 Grid View</button>
+            <button className={`btn ${tab === 'pdf' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('pdf')}>📄 PDF</button>
+            <button className={`btn ${tab === 'coe' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('coe')}>📅 Calendar of Events</button>
+            <button className={`btn ${tab === 'updates' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('updates')}>📝 Updates</button>
+          </div>
+          <button 
+            className="btn btn-primary" 
+            style={{ 
+              background: 'linear-gradient(135deg, var(--primary) 0%, #4f46e5 100%)',
+              border: 'none',
+              boxShadow: '0 4px 12px rgba(79, 70, 229, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontWeight: 600,
+              padding: '8px 16px',
+              borderRadius: 'var(--radius)'
+            }}
+            onClick={() => navigate('/admin/timetable/generate')}
+          >
+            🤖 Make Timetable
+          </button>
         </div>
       )}
 
@@ -654,10 +674,10 @@ export default function AdminManageTimetable() {
             <TimetableGrid
               entries={entries}
               timeSlots={timeSlots}
-              editable={true}
-              showSlotControls={true}
-              onCellClick={handleCellClick}
-              onSlotsChange={handleSlotsChange}
+              editable={false}
+              showSlotControls={false}
+              onCellClick={null}
+              onSlotsChange={null}
             />
           )}
         </>

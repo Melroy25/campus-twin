@@ -452,6 +452,10 @@ export default function AdminManageUsers() {
   };
 
   const handleDeleteUser = async (user) => {
+    if (user.is_super_admin || user.usn === 'admin' || (user.uid || user.id) === '6a0e19cb002f44b57eef') {
+      toast.error('The primary Super Admin account cannot be deleted.');
+      return;
+    }
     if (!window.confirm(`Delete user "${user.name}" (${user.usn})?`)) return;
     try {
       // 1. Delete database documents
@@ -610,6 +614,10 @@ export default function AdminManageUsers() {
   };
 
   const handleOpenChangePasswordModal = (user) => {
+    if (user.is_super_admin || user.usn === 'admin' || (user.uid || user.id) === '6a0e19cb002f44b57eef') {
+      toast.error('The Super Admin password cannot be changed from here.');
+      return;
+    }
     setChangingPasswordUser(user);
     setNewPassword('');
   };

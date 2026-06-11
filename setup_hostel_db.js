@@ -27,7 +27,8 @@ const schemas = {
     availability_status: 255, // Available, Full
     attached_bathroom: 'boolean',
     ac_available: 'boolean',
-    description: 1000
+    description: 1000,
+    occupants: 'string[]'
   },
   hostelRoomImages: {
     image_id: 255,
@@ -156,6 +157,8 @@ async function run() {
             await databases.createIntegerAttribute(DATABASE_ID, colName, attrName, false);
           } else if (attrType === 'boolean') {
             await databases.createBooleanAttribute(DATABASE_ID, colName, attrName, false);
+          } else if (attrType === 'string[]') {
+            await databases.createStringAttribute(DATABASE_ID, colName, attrName, 255, false, undefined, true);
           } else {
             await databases.createStringAttribute(DATABASE_ID, colName, attrName, attrType, false);
           }

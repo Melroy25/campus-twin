@@ -19,16 +19,14 @@ export default function PlacementAdminLogin() {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState('admin');
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Redirect if already logged in
+  // Clear any existing session to ensure username/password is always asked
   useEffect(() => {
-    const adminSession = localStorage.getItem('placement_admin_session');
-    if (adminSession) {
-      navigate('/placement/admin');
-    }
-  }, [navigate]);
+    localStorage.removeItem('placement_admin_session');
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -39,28 +37,59 @@ export default function PlacementAdminLogin() {
     setLoading(true);
     try {
       const hashed = await hashPassword(password);
-      // Query placementUsers collection
-      const res = await queryDocuments('placementUsers', [
-        Query.equal('username', username)
-      ]);
 
-      if (res && res.length > 0) {
-        const admin = res[0];
-        if (admin.password === hashed) {
-          // Store session data in localStorage
-          const session = {
-            id: admin.admin_id,
-            username: admin.username,
-            role: 'placement_admin',
-          };
-          localStorage.setItem('placement_admin_session', JSON.stringify(session));
-          toast.success(`Welcome back, Coordinator ${admin.username}!`);
-          navigate(`/placement/admin`);
+      if (role === 'admin') {
+        // Query placementUsers collection
+        const res = await queryDocuments('placementUsers', [
+          Query.equal('username', username)
+        ]);
+
+        if (res && res.length > 0) {
+          const admin = res[0];
+          if (admin.password === hashed) {
+            // Store session data in localStorage
+            const session = {
+              id: admin.admin_id,
+              username: admin.username,
+              role: 'placement_admin',
+              name: admin.username
+            };
+            localStorage.setItem('placement_admin_session', JSON.stringify(session));
+            toast.success(`Welcome back, Coordinator ${admin.username}!`);
+            navigate(`/placement/admin`);
+          } else {
+            console.log("Admin Password mismatch:", { adminPassword: admin.password, hashedInput: hashed });
+            toast.error(`Invalid password. Got: ${hashed.substring(0, 10)}... Expected: ${admin.password?.substring(0, 10)}...`);
+          }
         } else {
-          toast.error('Invalid password.');
+          toast.error('Placement Admin account not found.');
         }
       } else {
-        toast.error('Placement Admin account not found.');
+        // Query placementStaff collection for teacher or speaker
+        const staffRes = await queryDocuments('placementStaff', [
+          Query.equal('username', username)
+        ]);
+        const expectedType = role === 'teacher' ? 'teacher' : 'speaker';
+        const staff = staffRes && staffRes.find(s => s.type === expectedType);
+        if (staff) {
+          if (staff.password === hashed) {
+            // Store session data in localStorage
+            const session = {
+              id: staff.staff_id,
+              username: staff.username,
+              role: role === 'teacher' ? 'placement_teacher' : 'placement_speaker',
+              name: staff.name
+            };
+            localStorage.setItem('placement_admin_session', JSON.stringify(session));
+            toast.success(`Welcome back, ${role === 'teacher' ? 'Teacher' : 'Speaker'} ${staff.name}!`);
+            navigate(`/placement/admin`);
+          } else {
+            console.log(`${expectedType} Password mismatch:`, { staffPassword: staff.password, hashedInput: hashed });
+            toast.error(`Invalid password. Got: ${hashed.substring(0, 10)}... Expected: ${staff.password?.substring(0, 10)}...`);
+          }
+        } else {
+          toast.error(`Placement ${role === 'teacher' ? 'Teacher' : 'Speaker'} account not found.`);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -98,12 +127,49 @@ export default function PlacementAdminLogin() {
                 type="text"
                 className="form-control"
                 style={{ paddingLeft: 36 }}
-                placeholder="e.g. placement_admin"
+                placeholder={role === 'admin' ? "e.g. placement_admin" : role === 'teacher' ? "e.g. placement_teacher" : "e.g. speaker_name"}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="off"
                 required
               />
+            </div>
+          </div>
+
+          {/* Role */}
+          <div className="form-group">
+            <label className="form-label">Role *</label>
+            <div style={{ position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><MdSecurity /></span>
+              <select
+                className="form-control"
+                style={{ 
+                  paddingLeft: 36,
+                  paddingRight: 32,
+                  appearance: 'none',
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none',
+                  background: 'var(--surface-1)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer'
+                }}
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                required
+              >
+                <option value="admin">Admin</option>
+                <option value="teacher">Teacher</option>
+                <option value="speaker">Speaker</option>
+              </select>
+              <span style={{
+                position: 'absolute',
+                right: 12,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--text-muted)',
+                pointerEvents: 'none',
+                fontSize: '0.8rem'
+              }}>▼</span>
             </div>
           </div>
 
@@ -151,7 +217,7 @@ export default function PlacementAdminLogin() {
             }} 
             disabled={loading}
           >
-            {loading ? 'Authenticating...' : 'Sign In as Coordinator'}
+            {loading ? 'Authenticating...' : role === 'admin' ? 'Sign In as Coordinator' : role === 'teacher' ? 'Sign In as Teacher' : 'Sign In as Speaker'}
           </button>
         </form>
       </div>

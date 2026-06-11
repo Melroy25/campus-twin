@@ -15,7 +15,7 @@ import {
 export default function HostelRooms({ hostelType, role }) {
   const { userProfile } = useAuth();
   const accent = hostelType === 'girls' ? '#ec4899' : '#3b82f6';
-  const accentLight = hostelType === 'girls' ? '#fce7f3' : '#dbeafe';
+  const accentLight = hostelType === 'girls' ? 'var(--accent-light-girls)' : 'var(--accent-light-boys)';
   const accentDark = hostelType === 'girls' ? '#be185d' : '#1e40af';
 
   const [rooms, setRooms] = useState([]);
@@ -716,17 +716,18 @@ export default function HostelRooms({ hostelType, role }) {
 
         {/* Tabs */}
         <div style={{
-          display: 'flex', gap: 4, marginBottom: 24,
-          background: 'var(--surface-2)', padding: 4, borderRadius: 12, width: 'fit-content'
+          display: 'flex', gap: 6, marginBottom: 24,
+          background: 'var(--surface-2)', padding: 6, borderRadius: 12, width: '100%',
+          justifyContent: 'center', flexWrap: 'wrap'
         }}>
           <button
             onClick={() => setStudentTab('my-room')}
             style={{
-              padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              padding: '10px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
               fontSize: '0.85rem', fontWeight: 600, transition: 'all 0.2s ease',
               background: studentTab === 'my-room' ? accent : 'transparent',
               color: studentTab === 'my-room' ? 'white' : 'var(--text-muted)',
-              display: 'flex', alignItems: 'center', gap: 6
+              display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap'
             }}
           >
             <MdKingBed /> My Room
@@ -734,11 +735,11 @@ export default function HostelRooms({ hostelType, role }) {
           <button
             onClick={() => setStudentTab('available')}
             style={{
-              padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              padding: '10px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
               fontSize: '0.85rem', fontWeight: 600, transition: 'all 0.2s ease',
               background: studentTab === 'available' ? accent : 'transparent',
               color: studentTab === 'available' ? 'white' : 'var(--text-muted)',
-              display: 'flex', alignItems: 'center', gap: 6
+              display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap'
             }}
           >
             <MdSearch /> Browse Rooms
@@ -752,11 +753,11 @@ export default function HostelRooms({ hostelType, role }) {
             <button
               onClick={() => setStudentTab('requests')}
               style={{
-                padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                padding: '10px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
                 fontSize: '0.85rem', fontWeight: 600, transition: 'all 0.2s ease',
                 background: studentTab === 'requests' ? accent : 'transparent',
                 color: studentTab === 'requests' ? 'white' : 'var(--text-muted)',
-                display: 'flex', alignItems: 'center', gap: 6
+                display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap'
               }}
             >
               <MdSwapHoriz /> My Requests
@@ -771,11 +772,11 @@ export default function HostelRooms({ hostelType, role }) {
           <button
             onClick={() => setStudentTab('gallery')}
             style={{
-              padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              padding: '10px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
               fontSize: '0.85rem', fontWeight: 600, transition: 'all 0.2s ease',
               background: studentTab === 'gallery' ? accent : 'transparent',
               color: studentTab === 'gallery' ? 'white' : 'var(--text-muted)',
-              display: 'flex', alignItems: 'center', gap: 6
+              display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap'
             }}
           >
             <MdPhotoLibrary /> Room Gallery

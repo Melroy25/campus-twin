@@ -32,13 +32,6 @@ exports.handler = async (event, context) => {
       };
     }
 
-    if (role === 'admin') {
-      return {
-        statusCode: 403,
-        body: JSON.stringify({ error: 'Password recovery is not supported for Admin accounts.' })
-      };
-    }
-
     // Prepare search queries for USN (case insensitive array match)
     const usnVariants = [usn, usn.toUpperCase(), usn.toLowerCase()];
     // Unique variants
@@ -76,6 +69,15 @@ exports.handler = async (event, context) => {
     }
 
     const userDoc = searchData.documents[0];
+
+    // Prevent password recovery for Super Admin accounts
+    if (userDoc.is_super_admin || userDoc.usn === 'admin' || userDoc.email === 'admin@campustwin.edu' || userDoc.uid === '6a0e19cb002f44b57eef') {
+      return {
+        statusCode: 403,
+        body: JSON.stringify({ error: 'Password recovery is not supported for the Super Admin account.' })
+      };
+    }
+
     const email = userDoc.email;
     const uid = userDoc.uid;
 

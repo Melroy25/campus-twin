@@ -28,6 +28,7 @@ import AdminDashboard     from './pages/admin/Dashboard';
 import AdminUsers         from './pages/admin/ManageUsers';
 import AdminClasses       from './pages/admin/ManageClasses';
 import AdminTimetable     from './pages/admin/ManageTimetable';
+import AutoGenerateTimetable from './pages/admin/AutoGenerateTimetable';
 import AdminMarksCards    from './pages/admin/UploadMarksCards';
 import AdminEvents        from './pages/admin/PostEvents';
 import AdminComplaintBox  from './pages/admin/ComplaintBox';
@@ -36,6 +37,7 @@ import ManageSubjects     from './pages/admin/ManageSubjects';
 // Teacher
 import TeacherHome        from './pages/teacher/TeacherHome';
 import TeacherAttendance  from './pages/teacher/MarkAttendance';
+import TeacherPlacementAttendance from './pages/teacher/TeacherPlacementAttendance';
 import TeacherMarks       from './pages/teacher/AddMarks';
 import TeacherLeave       from './pages/teacher/LeaveRequests';
 import TeacherTimetable   from './pages/teacher/TeacherTimetable';
@@ -95,13 +97,13 @@ function App() {
           {/* Hostel ERP Routes */}
           <Route path="/hostel" element={<PrivateRoute allowDuringMaintenance={true}><HostelSelection /></PrivateRoute>} />
           <Route path="/hostel/login" element={<WardenLogin />} />
-          <Route path="/hostel/student" element={<HostelPrivateRoute role="student"><HostelStudentPortal /></HostelPrivateRoute>} />
+          <Route path="/hostel/student" element={<PrivateRoute allowedRoles={['student']} allowDuringMaintenance={true}><HostelPrivateRoute role="student"><HostelStudentPortal /></HostelPrivateRoute></PrivateRoute>} />
           <Route path="/hostel/warden" element={<HostelPrivateRoute role="warden"><HostelWardenPortal /></HostelPrivateRoute>} />
 
           {/* Placement Portal Routes */}
           <Route path="/placement" element={<PrivateRoute allowDuringMaintenance={true}><PlacementSelection /></PrivateRoute>} />
           <Route path="/placement/login" element={<PlacementAdminLogin />} />
-          <Route path="/placement/student" element={<PlacementPrivateRoute role="student"><PlacementStudentPortal /></PlacementPrivateRoute>} />
+          <Route path="/placement/student" element={<PrivateRoute allowedRoles={['student']} allowDuringMaintenance={true}><PlacementPrivateRoute role="student"><PlacementStudentPortal /></PlacementPrivateRoute></PrivateRoute>} />
           <Route path="/placement/admin" element={<PlacementPrivateRoute role="admin"><PlacementAdminPortal /></PlacementPrivateRoute>} />
 
           {/* Student Routes */}
@@ -124,6 +126,7 @@ function App() {
           <Route path="/admin/classes" element={<PrivateRoute allowedRoles={['admin']}><AdminClasses /></PrivateRoute>} />
           <Route path="/admin/subjects" element={<PrivateRoute allowedRoles={['admin']}><ManageSubjects /></PrivateRoute>} />
           <Route path="/admin/timetable" element={<PrivateRoute allowedRoles={['admin']}><AdminTimetable /></PrivateRoute>} />
+          <Route path="/admin/timetable/generate" element={<PrivateRoute allowedRoles={['admin']}><AutoGenerateTimetable /></PrivateRoute>} />
           <Route path="/admin/marks-cards" element={<PrivateRoute allowedRoles={['admin']}><AdminMarksCards /></PrivateRoute>} />
           <Route path="/admin/events" element={<PrivateRoute allowedRoles={['admin']}><AdminEvents /></PrivateRoute>} />
           <Route path="/admin/complaints" element={<PrivateRoute allowedRoles={['admin']}><AdminComplaintBox /></PrivateRoute>} />
@@ -133,6 +136,7 @@ function App() {
           <Route path="/teacher" element={<PrivateRoute allowedRoles={['teacher']}><TeacherHome /></PrivateRoute>} />
           <Route path="/teacher/timetable" element={<PrivateRoute allowedRoles={['teacher']}><TeacherTimetable /></PrivateRoute>} />
           <Route path="/teacher/attendance" element={<PrivateRoute allowedRoles={['teacher']}><TeacherAttendance /></PrivateRoute>} />
+          <Route path="/teacher/placement-attendance" element={<PrivateRoute allowedRoles={['teacher']}><TeacherPlacementAttendance /></PrivateRoute>} />
           <Route path="/teacher/marks" element={<PrivateRoute allowedRoles={['teacher']}><TeacherMarks /></PrivateRoute>} />
           <Route path="/teacher/leave" element={<PrivateRoute allowedRoles={['teacher']}><TeacherLeave /></PrivateRoute>} />
           <Route path="/teacher/complaints" element={<PrivateRoute allowedRoles={['teacher']}><StudentComplaintBox /></PrivateRoute>} />

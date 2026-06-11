@@ -364,6 +364,7 @@ export default function ForgotPassword() {
               >
                 <option value="student" style={{ background: '#1e293b' }}>Student</option>
                 <option value="teacher" style={{ background: '#1e293b' }}>Teacher / Mentor</option>
+                <option value="admin" style={{ background: '#1e293b' }}>Branch Admin</option>
               </select>
             </div>
 

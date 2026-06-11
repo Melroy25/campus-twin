@@ -438,7 +438,7 @@ export default function StudentHome() {
         </div>
 
         {/* Quick Actions */}
-        <div style={{ display: 'grid', gridTemplateColumns: userProfile?.isHostelite ? '1fr 1fr' : '1fr', gap: 16 }}>
+        <div className={userProfile?.isHostelite ? "grid-2" : ""} style={!userProfile?.isHostelite ? { display: 'grid', gridTemplateColumns: '1fr', gap: 16 } : undefined}>
           <div className="card" style={{ 
             background: 'linear-gradient(135deg, #1e212b 0%, #2a2d3a 100%)', 
             color: 'white',

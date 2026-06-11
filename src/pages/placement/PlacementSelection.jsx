@@ -12,6 +12,29 @@ export default function PlacementSelection() {
   const isStudent = userProfile?.role === 'student';
   const isAdminSession = !!localStorage.getItem('placement_admin_session');
 
+  // Auto-redirect student users directly to the student portal
+  useEffect(() => {
+    if (isStudent) {
+      navigate('/placement/student', { replace: true });
+    }
+  }, [isStudent, navigate]);
+
+  if (isStudent) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        background: 'var(--surface-1)'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <p className="text-muted">Redirecting to Placement Portal...</p>
+        </div>
+      </div>
+    );
+  }
+
   const handleSelectStudentPortal = () => {
     if (!currentUser) {
       toast.error('Please log in as a student to proceed');
@@ -26,11 +49,7 @@ export default function PlacementSelection() {
   };
 
   const handleSelectAdminPortal = () => {
-    if (isAdminSession) {
-      navigate('/placement/admin');
-    } else {
-      navigate('/placement/login');
-    }
+    navigate('/placement/login');
   };
 
   return (

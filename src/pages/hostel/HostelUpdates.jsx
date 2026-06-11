@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { queryDocuments, addDocument, updateDocument, deleteDocument } from '../../appwrite/database';
+import { queryDocuments, addDocument, updateDocument, deleteDocument, addNotification } from '../../appwrite/database';
 import { Query } from 'appwrite';
 import { toast } from 'react-hot-toast';
 import { 
@@ -12,7 +12,7 @@ import {
 export default function HostelUpdates({ hostelType, role }) {
   const { currentUser } = useAuth();
   const accent = hostelType === 'girls' ? '#ec4899' : '#3b82f6';
-  const accentLight = hostelType === 'girls' ? '#fce7f3' : '#dbeafe';
+  const accentLight = hostelType === 'girls' ? 'var(--accent-light-girls)' : 'var(--accent-light-boys)';
   const accentDark = hostelType === 'girls' ? '#be185d' : '#1e40af';
 
   const [activeSubTab, setActiveSubTab] = useState('notices'); // 'notices' | 'polls'
@@ -86,6 +86,15 @@ export default function HostelUpdates({ hostelType, role }) {
       });
 
       toast.success("Notice posted successfully!");
+      try {
+        await addNotification({
+          user_id: 'all_hostel',
+          message: `📢 Notice Board: "${noticeTitle.trim()}" has been published by the Warden.`,
+          category: 'hostel'
+        });
+      } catch (notifErr) {
+        console.warn("Failed to notify students of notice:", notifErr);
+      }
       setNoticeTitle('');
       setNoticeContent('');
       setIsEmergency(false);
@@ -151,6 +160,15 @@ export default function HostelUpdates({ hostelType, role }) {
       });
 
       toast.success("Poll published!");
+      try {
+        await addNotification({
+          user_id: 'all_hostel',
+          message: `📊 Opinion Poll: "${pollQuestion.trim()}" - Tell us what you think!`,
+          category: 'hostel'
+        });
+      } catch (notifErr) {
+        console.warn("Failed to notify students of poll:", notifErr);
+      }
       setPollQuestion('');
       setPollOptions(['', '']);
       fetchData();
@@ -268,7 +286,7 @@ export default function HostelUpdates({ hostelType, role }) {
   const renderNoticeSection = () => {
     const isWarden = role === 'warden';
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: isWarden ? '1fr 1.2fr' : '1fr', gap: 24 }}>
+      <div className={`hostel-updates-grid ${isWarden ? '' : 'single-column'}`}>
         {/* Warden Posting form */}
         {isWarden && (
           <div>
@@ -460,7 +478,7 @@ export default function HostelUpdates({ hostelType, role }) {
     const userId = currentUser?.uid || currentUser?.$id;
 
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: isWarden ? '1fr 1.2fr' : '1fr', gap: 24 }}>
+      <div className={`hostel-updates-grid ${isWarden ? '' : 'single-column'}`}>
         {/* Warden Poll Creator Form */}
         {isWarden && (
           <div>
@@ -753,7 +771,9 @@ export default function HostelUpdates({ hostelType, role }) {
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
-                              zIndex: 1
+                              zIndex: 1,
+                              gap: 12,
+                              flexWrap: 'wrap'
                             }}
                           >
                             {/* Animated Background Progress Bar */}
@@ -777,7 +797,11 @@ export default function HostelUpdates({ hostelType, role }) {
                               color: isUserChoice ? accentDark : 'var(--text)',
                               display: 'flex',
                               alignItems: 'center',
-                              gap: 6
+                              gap: 6,
+                              flexWrap: 'wrap',
+                              wordBreak: 'break-word',
+                              minWidth: 0,
+                              flex: 1
                             }}>
                               {opt}
                               {isUserChoice && (
@@ -790,14 +814,15 @@ export default function HostelUpdates({ hostelType, role }) {
                                   background: 'white',
                                   padding: '1px 6px',
                                   borderRadius: 8,
-                                  border: `1px solid ${accent}`
+                                  border: `1px solid ${accent}`,
+                                  whiteSpace: 'nowrap'
                                 }}>
                                   <MdCheckCircle /> Your Choice
                                 </span>
                               )}
                             </span>
 
-                            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text)' }}>
+                            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                               {optVotesCount} votes ({percentage}%)
                             </span>
                           </div>

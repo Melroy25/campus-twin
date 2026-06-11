@@ -225,7 +225,7 @@ export default function UserProfile() {
               <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
                 <MdEmail size={14} /> Email Address
               </div>
-              <strong style={{ color: 'var(--text-primary)', fontSize: '0.95rem' }}>{currentUser?.email || userProfile?.email || 'N/A'}</strong>
+              <strong style={{ color: 'var(--text-primary)', fontSize: '0.95rem' }}>{userProfile?.personalEmail || userProfile?.email || currentUser?.email || 'N/A'}</strong>
             </div>
 
             {userProfile?.role === 'student' && (

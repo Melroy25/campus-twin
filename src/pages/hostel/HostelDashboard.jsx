@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { queryDocuments } from '../../appwrite/database';
+import { queryDocuments, getById, updateDocument, addDocumentWithId } from '../../appwrite/database';
 import { Query } from 'appwrite';
+import { toast } from 'react-hot-toast';
 import {
   MdDashboard, MdBed, MdReportProblem, MdEventNote, MdReceipt,
   MdChat, MdAnnouncement, MdMeetingRoom, MdPeople, MdWarning,
@@ -14,12 +15,14 @@ export default function HostelDashboard({ hostelType, role, onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({});
   const [recentActivity, setRecentActivity] = useState([]);
+  const [hostelMaintenance, setHostelMaintenance] = useState(false);
+  const [updatingMaintenance, setUpdatingMaintenance] = useState(false);
 
   // Detect dark theme
   const isDark = document.body.classList.contains('dark-theme');
 
   const accentColor = hostelType === 'girls' ? '#ec4899' : '#3b82f6';
-  const accentLight = hostelType === 'girls' ? '#fce7f3' : '#dbeafe';
+  const accentLight = hostelType === 'girls' ? 'var(--accent-light-girls)' : 'var(--accent-light-boys)';
   const accentDark = hostelType === 'girls' ? '#be185d' : '#1e40af';
   const gradientStart = hostelType === 'girls' ? '#ec4899' : '#3b82f6';
   const gradientEnd = hostelType === 'girls' ? '#f472b6' : '#60a5fa';
@@ -89,12 +92,24 @@ export default function HostelDashboard({ hostelType, role, onNavigate }) {
         setRecentActivity(activity);
       } else {
         // Warden dashboard
-        const [rooms, complaints, leaves, bills] = await Promise.all([
+        const [rooms, complaints, leaves, bills, maintenanceDoc] = await Promise.all([
           queryDocuments('hostelRooms', [hostelQuery]),
           queryDocuments('hostelComplaints', [hostelQuery]),
           queryDocuments('hostelLeaveRequests', [hostelQuery]),
           queryDocuments('hostelBills', [hostelQuery]),
+          getById('hostelNotices', `hostel_settings_${hostelType}`).catch(() => null)
         ]);
+
+        if (maintenanceDoc && maintenanceDoc.content) {
+          try {
+            const parsed = JSON.parse(maintenanceDoc.content);
+            setHostelMaintenance(!!parsed?.maintenance_mode);
+          } catch (e) {
+            setHostelMaintenance(false);
+          }
+        } else {
+          setHostelMaintenance(false);
+        }
 
         const totalRooms = rooms.length;
         const totalOccupied = rooms.reduce((sum, r) => sum + (r.occupied_count || 0), 0);
@@ -139,6 +154,43 @@ export default function HostelDashboard({ hostelType, role, onNavigate }) {
       console.error('Failed to load dashboard data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const toggleHostelMaintenance = async () => {
+    setUpdatingMaintenance(true);
+    const targetState = !hostelMaintenance;
+    try {
+      let existing = null;
+      try {
+        existing = await getById('hostelNotices', `hostel_settings_${hostelType}`);
+      } catch (err) {
+        // ignore
+      }
+
+      const settingsData = {
+        notice_id: `hostel_settings_${hostelType}`,
+        title: `account_settings_hostel_maintenance_${hostelType}`,
+        content: JSON.stringify({ maintenance_mode: targetState }),
+        is_emergency: false,
+        hostel_type: hostelType,
+        pdf_url: '',
+        createdAt: new Date().toISOString()
+      };
+
+      if (existing) {
+        await updateDocument('hostelNotices', `hostel_settings_${hostelType}`, settingsData);
+      } else {
+        await addDocumentWithId('hostelNotices', `hostel_settings_${hostelType}`, settingsData);
+      }
+
+      setHostelMaintenance(targetState);
+      toast.success(`Hostel Maintenance Mode turned ${targetState ? 'ON' : 'OFF'}`);
+    } catch (error) {
+      console.error('Failed to toggle hostel maintenance:', error);
+      toast.error('Failed to update maintenance settings.');
+    } finally {
+      setUpdatingMaintenance(false);
     }
   };
 
@@ -823,6 +875,75 @@ export default function HostelDashboard({ hostelType, role, onNavigate }) {
               </button>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Hostel Maintenance Mode Card (Warden Settings) */}
+      <div style={glassCard({ marginTop: 24, padding: 24 })}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+            <div style={{
+              width: 48, height: 48, borderRadius: 12,
+              background: hostelMaintenance ? '#fee2e2' : accentLight,
+              color: hostelMaintenance ? '#ef4444' : accentColor,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '1.5rem',
+            }}>
+              <MdWarning />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 4px 0', color: 'var(--text-primary)' }}>
+                Hostel Maintenance Mode
+              </h3>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.4, maxWidth: 600 }}>
+                When active, students accessing the Hostel Portal will only be allowed to view the **Hostel Chat**, **Hostel Updates** (polls & bulletins), and **Hostel Rules** tabs. All other features (Room requests, Leave requests, Bills, etc.) will be temporarily locked.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={toggleHostelMaintenance}
+            disabled={updatingMaintenance}
+            style={{
+              padding: '10px 20px',
+              borderRadius: 10,
+              border: 'none',
+              background: hostelMaintenance ? '#ef4444' : 'var(--border)',
+              color: hostelMaintenance ? 'white' : 'var(--text-primary)',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              cursor: updatingMaintenance ? 'not-allowed' : 'pointer',
+              opacity: updatingMaintenance ? 0.7 : 1,
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+            onMouseEnter={e => {
+              if (!updatingMaintenance) {
+                e.currentTarget.style.transform = 'scale(1.02)';
+                if (hostelMaintenance) {
+                  e.currentTarget.style.background = '#dc2626';
+                } else {
+                  e.currentTarget.style.background = 'var(--surface-hover)';
+                }
+              }
+            }}
+            onMouseLeave={e => {
+              if (!updatingMaintenance) {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.background = hostelMaintenance ? '#ef4444' : 'var(--border)';
+              }
+            }}
+          >
+            {updatingMaintenance ? (
+              'Saving...'
+            ) : hostelMaintenance ? (
+              'Disable Maintenance'
+            ) : (
+              'Enable Maintenance'
+            )}
+          </button>
         </div>
       </div>
 

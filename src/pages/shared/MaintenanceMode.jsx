@@ -143,6 +143,19 @@ export default function MaintenanceMode() {
           >
             Hostel Portal
           </button>
+          <button 
+            style={{
+              ...chatBtn,
+              background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+              transform: hoverBtn === 'placement' ? 'translateY(-2px)' : 'none',
+              boxShadow: hoverBtn === 'placement' ? '0 4px 12px rgba(99, 102, 241, 0.4)' : 'none',
+            }}
+            onMouseEnter={() => setHoverBtn('placement')}
+            onMouseLeave={() => setHoverBtn(null)}
+            onClick={() => navigate('/placement')}
+          >
+            Placement Portal
+          </button>
           {userProfile?.role !== 'admin' && (
             <button 
               style={primaryBtn} 

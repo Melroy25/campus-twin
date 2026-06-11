@@ -86,6 +86,26 @@ exports.handler = async (event, context) => {
       .setProject(projectId)
       .setKey(apiKey);
     
+    // Prevent password recovery for Super Admin accounts
+    const databases = new sdk.Databases(client);
+    try {
+      const userRoleDoc = await databases.getDocument(databaseId, 'userRoles', uid);
+      if (userRoleDoc && (userRoleDoc.is_super_admin || userRoleDoc.usn === 'admin' || userRoleDoc.email === 'admin@campustwin.edu')) {
+        return {
+          statusCode: 403,
+          body: JSON.stringify({ error: 'Password recovery is not supported for the Super Admin account.' })
+        };
+      }
+    } catch (dbErr) {
+      console.warn('Could not retrieve user role doc in verify function:', dbErr.message);
+      if (uid === '6a0e19cb002f44b57eef') {
+        return {
+          statusCode: 403,
+          body: JSON.stringify({ error: 'Password recovery is not supported for the Super Admin account.' })
+        };
+      }
+    }
+
     const users = new sdk.Users(client);
     
     try {

@@ -382,16 +382,19 @@ export const deleteComplaint = async (id) => deleteDocument('complaints', id);
 
 // Notifications & ChangeLog
 export const listenNotifications = (userId, cb) => {
-  queryDocuments('notifications', [Query.equal('user_id', userId)]).then(cb);
-  return client.subscribe(`databases.${DATABASE_ID}.collections.notifications.documents`, () => queryDocuments('notifications', [Query.equal('user_id', userId)]).then(cb));
+  const userIds = [userId, 'all', 'all_placement', 'all_hostel'];
+  const fetch = () => queryDocuments('notifications', [Query.equal('user_id', userIds)]).then(cb);
+  fetch();
+  return client.subscribe(`databases.${DATABASE_ID}.collections.notifications.documents`, fetch);
 };
 export const markNotificationRead = async (id) => updateDocument('notifications', id, { read_status: true });
+export const deleteNotification = async (id) => deleteDocument('notifications', id);
 
-export const addNotification = async (userIdOrData, message) => {
+export const addNotification = async (userIdOrData, message, category = 'college') => {
   if (typeof userIdOrData === 'object' && userIdOrData !== null) {
-    return await addDocument('notifications', { ...userIdOrData, read_status: false, createdAt: new Date().toISOString() });
+    return await addDocument('notifications', { category: 'college', ...userIdOrData, read_status: false, createdAt: new Date().toISOString() });
   } else {
-    return await addDocument('notifications', { user_id: userIdOrData, message, read_status: false, createdAt: new Date().toISOString() });
+    return await addDocument('notifications', { user_id: userIdOrData, message, category, read_status: false, createdAt: new Date().toISOString() });
   }
 };
 

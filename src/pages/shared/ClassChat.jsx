@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
 import { client, DATABASE_ID, PROJECT_ID, ENDPOINT } from '../../appwrite/config';
-import { queryDocuments, getById, addDocument, updateDocument, getAll, where, deleteDocument } from '../../appwrite/database';
+import { queryDocuments, getById, addDocument, updateDocument, getAll, where, deleteDocument, addNotification } from '../../appwrite/database';
 import { uploadFile } from '../../appwrite/storage';
 import { toast } from 'react-hot-toast';
 import {
@@ -261,6 +261,28 @@ export default function ClassChat() {
         file_type: fileType,
         file_name: fileName
       });
+
+      // Send notifications to other members
+      try {
+        const membersToNotify = new Set([
+          selectedClass.advisor_id,
+          selectedClass.mentor_id,
+          ...(selectedClass.chat_additional_members || [])
+        ]);
+        membersToNotify.delete(currentUser.uid);
+        
+        const cleanMembers = Array.from(membersToNotify).filter(Boolean);
+        const excerpt = messageText ? messageText.substring(0, 50) + (messageText.length > 50 ? '...' : '') : (fileName ? `Attachment: ${fileName}` : 'new message');
+        for (const memberId of cleanMembers) {
+          await addNotification({
+            user_id: memberId,
+            message: `💬 ${userProfile.name || 'Anonymous'} in ${selectedClass.label}: "${excerpt}"`,
+            category: 'college'
+          });
+        }
+      } catch (notifErr) {
+        console.warn("Failed to send chat message notifications:", notifErr);
+      }
     } catch (err) {
       toast.dismiss('upload-toast');
       toast.error("Failed to send message");
@@ -446,7 +468,6 @@ export default function ClassChat() {
       ) : (
         <div className="chat-layout" style={{
           display: 'flex',
-          height: 'calc(100vh - 150px)',
           background: 'var(--surface)',
           border: '1px solid var(--border)',
           borderRadius: 'var(--radius-lg)',
@@ -505,24 +526,25 @@ export default function ClassChat() {
               background: 'var(--surface)'
             }}>
               {/* Chat Header */}
-              <div className="chat-header" style={{
+              <div className="class-chat-header" style={{
                 padding: '14px 20px',
                 borderBottom: '1px solid var(--border)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                background: 'var(--surface-2)'
+                background: 'var(--surface-2)',
+                gap: 10
               }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {selectedClass.is_staff_chat ? selectedClass.label : `${selectedClass.label} Chat Group`}
                   </h3>
-                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {selectedClass.is_staff_chat ? 'Teacher & Admin Staff Lounge' : 'Official Class Chat Room'}
                   </div>
                 </div>
                 
-                <div style={{ display: 'flex', gap: 10 }}>
+                <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
                   <button
                     className="btn btn-sm btn-ghost"
                     style={{ background: 'white', display: 'flex', alignItems: 'center', gap: 6 }}

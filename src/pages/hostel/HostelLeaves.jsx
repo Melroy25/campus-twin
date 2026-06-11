@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { queryDocuments, addDocument, updateDocument } from '../../appwrite/database';
+import { queryDocuments, addDocument, updateDocument, addNotification } from '../../appwrite/database';
 import { Query } from 'appwrite';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
@@ -11,7 +11,7 @@ import {
 export default function HostelLeaves({ hostelType, role }) {
   const { currentUser, userProfile } = useAuth();
   const accent = hostelType === 'girls' ? '#ec4899' : '#3b82f6';
-  const accentLight = hostelType === 'girls' ? '#fce7f3' : '#dbeafe';
+  const accentLight = hostelType === 'girls' ? 'var(--accent-light-girls)' : 'var(--accent-light-boys)';
   const accentDark = hostelType === 'girls' ? '#be185d' : '#1e40af';
 
   const [leaves, setLeaves] = useState([]);
@@ -81,6 +81,15 @@ export default function HostelLeaves({ hostelType, role }) {
       });
 
       toast.success('Leave request submitted!');
+      try {
+        await addNotification({
+          user_id: 'warden',
+          message: `✈️ New Leave Request from ${studentName} (${formatDate(fromDate)} to ${formatDate(toDate)})`,
+          category: 'hostel'
+        });
+      } catch (notifErr) {
+        console.warn("Failed to notify warden of leave request:", notifErr);
+      }
       setReason('');
       setFromDate('');
       setToDate('');
@@ -101,6 +110,15 @@ export default function HostelLeaves({ hostelType, role }) {
         updateData.reply = reply;
       }
       await updateDocument('hostelLeaveRequests', id, updateData);
+      try {
+        await addNotification({
+          user_id: leaveItem.student_id,
+          message: `✈️ Your leave request from ${formatDate(leaveItem.from_date)} was ${newStatus.toUpperCase()}.${reply ? ` Remarks: "${reply}"` : ''}`,
+          category: 'hostel'
+        });
+      } catch (notifErr) {
+        console.warn("Failed to notify student of leave status:", notifErr);
+      }
       toast.success(`Leave request marked as ${newStatus}`);
       setShowReplyModal(false);
       setSelectedLeave(null);

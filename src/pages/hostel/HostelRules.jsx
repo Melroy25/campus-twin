@@ -11,7 +11,7 @@ import {
 
 export default function HostelRules({ hostelType, role }) {
   const accent = hostelType === 'girls' ? '#ec4899' : '#3b82f6';
-  const accentLight = hostelType === 'girls' ? '#fce7f3' : '#dbeafe';
+  const accentLight = hostelType === 'girls' ? 'var(--accent-light-girls)' : 'var(--accent-light-boys)';
   const accentDark = hostelType === 'girls' ? '#be185d' : '#1e40af';
 
   const [expandedSection, setExpandedSection] = useState('general');
@@ -372,84 +372,8 @@ export default function HostelRules({ hostelType, role }) {
       </div>
 
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24, flexWrap: 'wrap' }}>
-        {/* Accordions */}
-        <div>
-          <h3 style={{ fontSize: '0.94rem', fontWeight: 700, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <MdBook style={{ color: accent }} /> Hostel Code of Conduct
-          </h3>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {loadingRules ? (<div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-muted)' }}>Loading rules...</div>) : ruleSections.map((sec) => {
-              const isExpanded = expandedSection === ((sec.id || sec.$id) || sec.$id);
-              return (
-                <div key={(sec.id || sec.$id)} style={glassCard({ padding: 0, overflow: 'hidden' })}>
-                  <button
-                    onClick={() => toggleSection((sec.id || sec.$id))}
-                    style={{
-                      width: '100%',
-                      padding: '16px 20px',
-                      background: 'none',
-                      border: 'none',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      cursor: 'pointer',
-                      textAlign: 'left'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)' }}>
-                          {sec.title}
-                        </span>
-                        {(role === 'warden' || role === 'admin') && (
-                          <div style={{ display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
-                            <button onClick={() => handleEditRule(sec)} style={{ background: 'none', border: 'none', color: accent, cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }} title="Edit section">
-                              <MdEdit style={{ fontSize: '1rem' }} />
-                            </button>
-                            <button onClick={() => handleDeleteRule(sec.$id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }} title="Delete section">
-                              <MdDelete style={{ fontSize: '1rem' }} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    {isExpanded ? <MdExpandLess style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }} /> : <MdExpandMore style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }} />}
-                  </button>
-
-                  {isExpanded && (
-                    <div style={{ padding: '0 20px 20px 20px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', paddingTop: 16 }}>
-                      <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {sec.rules.map((rule, idx) => (
-                          <li key={idx} style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                            {rule}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          
-            {(role === 'warden' || role === 'admin') && (
-              <button 
-                className="btn btn-outline" 
-                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderStyle: 'dashed' }}
-                onClick={() => {
-                  setEditingRuleId(null);
-                  setRuleTitle('');
-                  setRuleItems(['']);
-                  setShowRuleModal(true);
-                }}
-              >
-                <MdAdd /> Add New Section
-              </button>
-            )}
-
-          </div>
-        </div>
-
-        {/* Emergency Contacts card */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+        {/* Emergency Contacts card (now first) */}
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <h3 style={{ fontSize: '0.94rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -486,7 +410,7 @@ export default function HostelRules({ hostelType, role }) {
                 No helplines registered yet.
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
                 {helplines.map((help) => (
                   <div key={help.$id || help.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'var(--surface-2)', borderRadius: 12 }}>
                     <div style={{ width: 34, height: 34, borderRadius: '50%', background: accentLight, color: accentDark, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', flexShrink: 0 }}>
@@ -559,6 +483,82 @@ export default function HostelRules({ hostelType, role }) {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Accordions (now second) */}
+        <div>
+          <h3 style={{ fontSize: '0.94rem', fontWeight: 700, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <MdBook style={{ color: accent }} /> Hostel Code of Conduct
+          </h3>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {loadingRules ? (<div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-muted)' }}>Loading rules...</div>) : ruleSections.map((sec) => {
+              const isExpanded = expandedSection === ((sec.id || sec.$id) || sec.$id);
+              return (
+                <div key={(sec.id || sec.$id)} style={glassCard({ padding: 0, overflow: 'hidden' })}>
+                  <button
+                    onClick={() => toggleSection((sec.id || sec.$id))}
+                    style={{
+                      width: '100%',
+                      padding: '16px 20px',
+                      background: 'none',
+                      border: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      textAlign: 'left'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text)' }}>
+                          {sec.title}
+                        </span>
+                        {(role === 'warden' || role === 'admin') && (
+                          <div style={{ display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                            <button onClick={() => handleEditRule(sec)} style={{ background: 'none', border: 'none', color: accent, cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }} title="Edit section">
+                              <MdEdit style={{ fontSize: '1rem' }} />
+                            </button>
+                            <button onClick={() => handleDeleteRule(sec.$id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }} title="Delete section">
+                              <MdDelete style={{ fontSize: '1rem' }} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    {isExpanded ? <MdExpandLess style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }} /> : <MdExpandMore style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }} />}
+                  </button>
+
+                  {isExpanded && (
+                    <div style={{ padding: '0 20px 20px 20px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', paddingTop: 16 }}>
+                      <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {sec.rules.map((rule, idx) => (
+                          <li key={idx} style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                            {rule}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          
+            {(role === 'warden' || role === 'admin') && (
+              <button 
+                className="btn btn-outline" 
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderStyle: 'dashed' }}
+                onClick={() => {
+                  setEditingRuleId(null);
+                  setRuleTitle('');
+                  setRuleItems(['']);
+                  setShowRuleModal(true);
+                }}
+              >
+                <MdAdd /> Add New Section
+              </button>
+            )}
+
           </div>
         </div>
       </div>

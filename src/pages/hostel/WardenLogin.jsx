@@ -23,6 +23,12 @@ export default function WardenLogin() {
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const handleHostelTypeChange = (type) => {
+    setHostelType(type);
+    setUsername('');
+    setPassword('');
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     if (!username || !password) {
@@ -93,7 +99,7 @@ export default function WardenLogin() {
                 type="button"
                 className={`btn btn-block btn-sm ${hostelType === 'boys' ? 'btn-primary' : 'btn-ghost'}`}
                 style={{ borderRadius: 6, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}
-                onClick={() => setHostelType('boys')}
+                onClick={() => handleHostelTypeChange('boys')}
               >
                 Boys Admin
               </button>
@@ -101,7 +107,7 @@ export default function WardenLogin() {
                 type="button"
                 className={`btn btn-block btn-sm ${hostelType === 'girls' ? 'btn-primary' : 'btn-ghost'}`}
                 style={{ borderRadius: 6, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px', background: hostelType === 'girls' ? '#ec4899' : undefined, color: hostelType === 'girls' ? 'white' : undefined }}
-                onClick={() => setHostelType('girls')}
+                onClick={() => handleHostelTypeChange('girls')}
               >
                 Girls Admin
               </button>

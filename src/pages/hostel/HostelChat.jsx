@@ -1,19 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
-import { queryDocuments, addDocument, updateDocument, deleteDocument } from '../../appwrite/database';
+import { queryDocuments, addDocument, updateDocument, deleteDocument, addNotification } from '../../appwrite/database';
 import { Query } from 'appwrite';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import {
   MdChat, MdSend, MdAnnouncement, MdCampaign,
   MdRefresh, MdPerson, MdSecurity, MdPeople, MdLock,
-  MdClose, MdEmail, MdPhone, MdContentCopy, MdAdd, MdEdit, MdDelete, MdSearch
+  MdClose, MdEmail, MdPhone, MdContentCopy, MdAdd, MdEdit, MdDelete, MdSearch,
+  MdPushPin
 } from 'react-icons/md';
 
 
 export default function HostelChat({ hostelType, role }) {
   const { currentUser, userProfile } = useAuth();
   const accent = hostelType === 'girls' ? '#ec4899' : '#3b82f6';
-  const accentLight = hostelType === 'girls' ? '#fce7f3' : '#dbeafe';
+  const accentLight = hostelType === 'girls' ? 'var(--accent-light-girls)' : 'var(--accent-light-boys)';
   const accentDark = hostelType === 'girls' ? '#be185d' : '#1e40af';
 
   const [messages, setMessages] = useState([]);
@@ -251,6 +252,28 @@ export default function HostelChat({ hostelType, role }) {
     }, 100);
   };
 
+  const handleScrollToMessage = (msgId) => {
+    const element = document.getElementById(`msg-${msgId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const bubble = element.querySelector('.chat-speech-bubble');
+      if (bubble) {
+        const originalBg = bubble.style.background;
+        bubble.style.transition = 'all 0.3s ease';
+        bubble.style.background = '#eab308';
+        bubble.style.boxShadow = '0 0 15px rgba(234, 179, 8, 0.4)';
+        bubble.style.transform = 'scale(1.03)';
+        setTimeout(() => {
+          bubble.style.background = originalBg;
+          bubble.style.boxShadow = '0 2px 6px rgba(0,0,0,0.04)';
+          bubble.style.transform = 'scale(1)';
+        }, 1200);
+      }
+    } else {
+      toast.error("Message not found in chat history");
+    }
+  };
+
 
   const handleDeleteMessage = async (id) => {
     if (!window.confirm("Are you sure you want to delete this message?")) return;
@@ -298,6 +321,16 @@ export default function HostelChat({ hostelType, role }) {
       };
 
       await addDocument('hostelMessages', newMsg);
+      try {
+        const excerpt = inputText.trim().substring(0, 50) + (inputText.trim().length > 50 ? '...' : '');
+        await addNotification({
+          user_id: 'all_hostel',
+          message: `💬 Hostel Chat: ${senderName}: "${excerpt}"`,
+          category: 'hostel'
+        });
+      } catch (notifErr) {
+        console.warn("Failed to notify hostel of chat message:", notifErr);
+      }
       setInputText('');
       setIsAnnouncement(false);
       // Optimistic rendering or direct refetch
@@ -354,19 +387,19 @@ export default function HostelChat({ hostelType, role }) {
   const chatFlowMessages = messages;
 
   return (
-    <div style={{ padding: '0 8px', maxWidth: 950, margin: '0 auto', display: 'grid', gridTemplateColumns: announcements.length > 0 ? '1.3fr 1fr' : '1fr', gap: 20, height: 'calc(100vh - 120px)', minHeight: 500 }}>
+    <div className="hostel-chat-container" style={{ padding: '0 8px', maxWidth: 950, margin: '0 auto', display: 'flex', flexDirection: 'column' }}>
       {/* Main Chat Feed */}
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', border: '1px solid var(--border)', background: 'var(--surface-1)', borderRadius: 16, overflow: 'hidden' }}>
         {/* Header */}
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface-1)' }}>
-          <div style={{ width: 38, height: 38, borderRadius: 10, background: accentLight, color: accentDark, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+        <div className="hostel-chat-header" style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface-1)' }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: accentLight, color: accentDark, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0 }}>
             <MdChat />
           </div>
-          <div>
-            <h2 style={{ fontSize: '0.94rem', fontWeight: 800, margin: 0, color: 'var(--text)' }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <h2 style={{ fontSize: '0.94rem', fontWeight: 800, margin: 0, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               Hostel Channel
             </h2>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               Real-time block messaging & announcement feed
             </div>
           </div>
@@ -388,6 +421,8 @@ export default function HostelChat({ hostelType, role }) {
               marginLeft: 'auto',
               cursor: 'pointer',
               transition: 'opacity 0.2s',
+              flexShrink: 0,
+              whiteSpace: 'nowrap'
             }}
             onMouseEnter={e => e.currentTarget.style.opacity = 0.8}
             onMouseLeave={e => e.currentTarget.style.opacity = 1}
@@ -396,6 +431,45 @@ export default function HostelChat({ hostelType, role }) {
             <span>{totalMembers} Members</span>
           </div>
         </div>
+
+        {/* Pinned Announcement Banner */}
+        {announcements.length > 0 && (() => {
+          const latestAnnouncement = announcements[announcements.length - 1];
+          return (
+            <div 
+              onClick={() => handleScrollToMessage(latestAnnouncement.$id || latestAnnouncement.message_id)}
+              style={{
+                padding: '10px 16px',
+                background: accentLight,
+                borderBottom: '1px solid var(--border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                transition: 'background-color 0.2s',
+                gap: 12,
+                userSelect: 'none'
+              }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = `${accentLight}dd`}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = accentLight}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+                <MdPushPin style={{ color: accentDark, fontSize: '1.1rem', flexShrink: 0, transform: 'rotate(45deg)' }} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 800, color: accentDark, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>
+                    Pinned Announcement (Click to view)
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {latestAnnouncement.message}
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontSize: '0.7rem', color: accentDark, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                {getDayLabel(latestAnnouncement.timestamp)}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Messages Scroll Container */}
         <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 14, background: 'var(--surface-2)' }}>
@@ -417,7 +491,11 @@ export default function HostelChat({ hostelType, role }) {
               const textColor = isOwn || isWarden ? 'white' : 'var(--text)';
               
               return (
-                <div key={msg.$id || msg.message_id || i} style={{ display: 'flex', flexDirection: 'column', alignItems: isOwn ? 'flex-end' : 'flex-start', maxWidth: '85%', alignSelf: isOwn ? 'flex-end' : 'flex-start' }}>
+                <div 
+                  key={msg.$id || msg.message_id || i} 
+                  id={`msg-${msg.$id || msg.message_id}`}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: isOwn ? 'flex-end' : 'flex-start', maxWidth: '85%', alignSelf: isOwn ? 'flex-end' : 'flex-start' }}
+                >
                   {/* Sender Label */}
                   {!isOwn && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, margin: '0 0 3px 6px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)' }}>
@@ -433,21 +511,24 @@ export default function HostelChat({ hostelType, role }) {
 
                   {/* Speech Bubble */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexDirection: isOwn ? 'row-reverse' : 'row' }}>
-                    <div style={{
-                    padding: '10px 14px',
-                    borderRadius: 16,
-                    borderTopRightRadius: isOwn ? 4 : 16,
-                    borderTopLeftRadius: !isOwn ? 4 : 16,
-                    background: bubbleColor,
-                    color: textColor,
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
-                    fontSize: '0.86rem',
-                    lineHeight: 1.4,
-                    wordBreak: 'break-word',
-                    border: !isOwn && !isWarden ? '1px solid var(--border)' : 'none'
-                  }}>
-                    {msg.message}
-                  </div>
+                    <div 
+                      className="chat-speech-bubble"
+                      style={{
+                        padding: '10px 14px',
+                        borderRadius: 16,
+                        borderTopRightRadius: isOwn ? 4 : 16,
+                        borderTopLeftRadius: !isOwn ? 4 : 16,
+                        background: bubbleColor,
+                        color: textColor,
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
+                        fontSize: '0.86rem',
+                        lineHeight: 1.4,
+                        wordBreak: 'break-word',
+                        border: !isOwn && !isWarden ? '1px solid var(--border)' : 'none'
+                      }}
+                    >
+                      {msg.message}
+                    </div>
                     {(isOwn || role === 'warden' || role === 'admin') && (
                       <button
                         onClick={() => handleDeleteMessage(msg.$id || msg.message_id)}
@@ -539,41 +620,7 @@ export default function HostelChat({ hostelType, role }) {
         </form>
       </div>
 
-      {/* Announcements Panel (Side Drawer for tablet/desktop) */}
-      {announcements.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 14 }}>
-          <h3 style={{ fontSize: '0.92rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 6, color: '#1e40af' }}>
-            <MdCampaign style={{ fontSize: '1.25rem', color: '#ef4444' }} /> Active Bulletins
-          </h3>
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {announcements.map((ann, i) => (
-              <div key={i} style={glassCard({ borderLeft: '4px solid #ef4444', background: '#fef2f2' })}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#991b1b', fontWeight: 700, marginBottom: 6 }}>
-                  
-                  <span>BROADCAST NOTICE</span>
-                  <span>{getDayLabel(ann.timestamp)}</span>
-                
-                  {(role === 'warden' || role === 'admin') && (
-                    <button 
-                      onClick={() => handleDeleteAnnouncement(ann.$id || ann.id)}
-                      style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', padding: '0 4px' }}
-                      title="Delete Bulletin"
-                    >
-                      <MdDelete style={{ fontSize: '1rem' }} />
-                    </button>
-                  )}
-                </div>
-                <p style={{ fontSize: '0.8rem', color: '#7f1d1d', margin: 0, lineHeight: 1.4, fontWeight: 500 }}>
-                  {ann.message}
-                </p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8, fontSize: '0.68rem', color: '#b91c1c', fontWeight: 600 }}>
-                  <MdSecurity /> Sent by Warden Office
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+
       {/* Members List Modal */}
       {showMembersModal && (
         <div style={{

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { queryDocuments, addDocument, updateDocument } from '../../appwrite/database';
+import { queryDocuments, addDocument, updateDocument, addNotification } from '../../appwrite/database';
 import { Query } from 'appwrite';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
@@ -11,7 +11,7 @@ import {
 export default function HostelComplaints({ hostelType, role }) {
   const { currentUser, userProfile } = useAuth();
   const accent = hostelType === 'girls' ? '#ec4899' : '#3b82f6';
-  const accentLight = hostelType === 'girls' ? '#fce7f3' : '#dbeafe';
+  const accentLight = hostelType === 'girls' ? 'var(--accent-light-girls)' : 'var(--accent-light-boys)';
   const accentDark = hostelType === 'girls' ? '#be185d' : '#1e40af';
 
   const [complaints, setComplaints] = useState([]);
@@ -74,6 +74,15 @@ export default function HostelComplaints({ hostelType, role }) {
       });
 
       toast.success('Complaint filed successfully!');
+      try {
+        await addNotification({
+          user_id: 'warden',
+          message: `🛠️ New Complaint filed by ${studentName} under category: ${category}`,
+          category: 'hostel'
+        });
+      } catch (notifErr) {
+        console.warn("Failed to notify warden of complaint:", notifErr);
+      }
       setMessage('');
       setShowAddForm(false);
       fetchComplaints();
@@ -92,6 +101,15 @@ export default function HostelComplaints({ hostelType, role }) {
         updateData.reply_message = reply;
       }
       await updateDocument('hostelComplaints', id, updateData);
+      try {
+        await addNotification({
+          user_id: complaint.student_id,
+          message: `🛠️ Your complaint regarding "${complaint.category}" is now ${newStatus.toUpperCase()}.${reply ? ` Reply: "${reply}"` : ''}`,
+          category: 'hostel'
+        });
+      } catch (notifErr) {
+        console.warn("Failed to notify student of complaint status:", notifErr);
+      }
       toast.success(`Complaint status marked as ${newStatus}`);
       setShowReplyModal(false);
       setSelectedComplaint(null);

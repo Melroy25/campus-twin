@@ -116,6 +116,19 @@ const schemas = {
     image_url: 2000,
     placed_year: 255,
     createdAt: 255
+  },
+  placementCondoneRequests: {
+    attendance_id: 255,
+    student_uid: 255,
+    student_name: 255,
+    student_usn: 255,
+    session_id: 255,
+    session_title: 255,
+    reason: 1000,
+    marked_by_name: 255,
+    status: 255, // pending, approved, rejected
+    feedback: 1000,
+    createdAt: 255
   }
 };
 

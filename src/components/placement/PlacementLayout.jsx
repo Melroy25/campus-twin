@@ -1,16 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { queryDocuments } from '../../appwrite/database';
+import { queryDocuments, getById } from '../../appwrite/database';
 import { Query } from 'appwrite';
 import { toast } from 'react-hot-toast';
 import {
   MdDashboard, MdWork, MdNotifications, MdLogout,
   MdDarkMode, MdLightMode, MdMenu, MdClose,
   MdDescription, MdAutoAwesome, MdBook, MdEventSeat,
-  MdSchool, MdCampaign, MdBarChart, MdGroup
+  MdSchool, MdCampaign, MdBarChart, MdGroup, MdCheckCircle,
+  MdChat, MdFeedback
 } from 'react-icons/md';
+import { FaLinkedin } from 'react-icons/fa';
 import logoImage from '../../assets/about-section-college.jpg';
+import { useNotifications } from '../../hooks/useNotifications';
+import NotificationDropdown from '../NotificationDropdown';
 
 export default function PlacementLayout({ children, activeTab, setActiveTab, role }) {
   const { userProfile, logout, currentUser } = useAuth();
@@ -18,8 +22,22 @@ export default function PlacementLayout({ children, activeTab, setActiveTab, rol
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
-  const [notifications, setNotifications] = useState([]);
   const notifRef = useRef(null);
+  const [placementMaintenanceStudents, setPlacementMaintenanceStudents] = useState(false);
+  const [placementMaintenanceTeachers, setPlacementMaintenanceTeachers] = useState(false);
+
+  const isAdmin = role === 'admin' || role === 'placement_admin' || role === 'placement_teacher' || role === 'placement_speaker';
+
+  const notifUserId = isAdmin ? 'placement_admin' : (currentUser?.uid || 'guest');
+  const {
+    notifications,
+    unreadCount,
+    resetUnreadCount,
+    dismissNotification,
+    clearAll,
+    pendingDismissList,
+    undoDismiss
+  } = useNotifications(notifUserId);
 
   // Sync theme status
   useEffect(() => {
@@ -29,6 +47,41 @@ export default function PlacementLayout({ children, activeTab, setActiveTab, rol
       setIsDark(true);
     }
   }, []);
+
+  // Sync placement maintenance mode
+  useEffect(() => {
+    const checkMaintenance = async () => {
+      try {
+        const doc = await getById('placementAnnouncements', 'placement_settings');
+        if (doc && doc.content) {
+          const parsed = JSON.parse(doc.content);
+          if (parsed) {
+            const isStudentMode = !!(parsed.maintenance_students || parsed.maintenance_mode);
+            const isTeacherMode = !!parsed.maintenance_teachers;
+
+            setPlacementMaintenanceStudents(isStudentMode);
+            setPlacementMaintenanceTeachers(isTeacherMode);
+
+            if (!isAdmin && isStudentMode) {
+              if (activeTab !== 'resume' && activeTab !== 'coach') {
+                setActiveTab('resume');
+              }
+            } else if ((role === 'placement_teacher' || role === 'placement_speaker') && isTeacherMode) {
+              if (activeTab !== 'chat') {
+                setActiveTab('chat');
+              }
+            }
+          }
+        } else {
+          setPlacementMaintenanceStudents(false);
+          setPlacementMaintenanceTeachers(false);
+        }
+      } catch (e) {
+        console.warn("Failed to check placement maintenance:", e);
+      }
+    };
+    checkMaintenance();
+  }, [activeTab, isAdmin, role, setActiveTab]);
 
   const toggleTheme = () => {
     if (isDark) {
@@ -53,37 +106,10 @@ export default function PlacementLayout({ children, activeTab, setActiveTab, rol
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Fetch placement specific notifications / announcements
-  const loadPlacementNotifications = async () => {
-    try {
-      if (role === 'admin') {
-        // Coordinator alerts
-        setNotifications([
-          { id: 'ca1', message: '3 pending resume reviews require action', createdAt: new Date().toISOString(), read: false },
-          { id: 'ca2', message: 'New applications submitted for Google India SDE drive', createdAt: new Date().toISOString(), read: true }
-        ]);
-      } else {
-        // Query recent student announcements
-        const anns = await queryDocuments('placementAnnouncements', []);
-        const list = anns.slice(0, 5).map(a => ({
-          id: a.$id,
-          message: `${a.is_important ? '🚨 IMPORTANT: ' : ''}${a.title} - ${a.content.substring(0, 80)}...`,
-          createdAt: a.createdAt || new Date().toISOString(),
-          read: false
-        }));
-        setNotifications(list);
-      }
-    } catch (err) {
-      console.warn("Error loading notifications:", err);
-    }
-  };
 
-  useEffect(() => {
-    loadPlacementNotifications();
-  }, [role]);
 
   const handleLogout = async () => {
-    if (role === 'admin') {
+    if (isAdmin) {
       localStorage.removeItem('placement_admin_session');
       toast.success('Logged out from Placement Coordinator Portal');
       navigate('/placement/login');
@@ -92,25 +118,41 @@ export default function PlacementLayout({ children, activeTab, setActiveTab, rol
     }
   };
 
-  const menuItems = role === 'admin' ? [
-    { id: 'dashboard', label: 'Analytics Dash', icon: <MdBarChart /> },
-    { id: 'students', label: 'Student Directory', icon: <MdGroup /> },
-    { id: 'sessions', label: 'Manage Sessions', icon: <MdEventSeat /> },
-    { id: 'companies', label: 'Manage Companies', icon: <MdWork /> },
-    { id: 'announcements', label: 'Announcements', icon: <MdCampaign /> },
-    { id: 'showcase', label: 'Placed Showcase', icon: <MdSchool /> }
-  ] : [
-    { id: 'dashboard', label: 'Dashboard', icon: <MdDashboard /> },
-    { id: 'resume', label: 'Resume Builder', icon: <MdDescription /> },
-    { id: 'coach', label: 'AI Resume Coach', icon: <MdAutoAwesome /> },
-    { id: 'openings', label: 'Job Openings', icon: <MdWork /> },
-    { id: 'sessions', label: 'Training Sessions', icon: <MdEventSeat /> },
-    { id: 'resources', label: 'Prep Resources', icon: <MdBook /> }
-  ];
+  let menuItems = [];
+  if (isAdmin) {
+    menuItems = [
+      { id: 'dashboard', label: 'Analytics Dash', icon: <MdBarChart />, roles: ['admin', 'placement_admin'] },
+      { id: 'students', label: 'Student Directory', icon: <MdGroup />, roles: ['admin', 'placement_admin'] },
+      { id: 'sessions', label: 'Manage Sessions', icon: <MdEventSeat />, roles: ['admin', 'placement_admin', 'placement_teacher', 'placement_speaker'] },
+      { id: 'companies', label: 'Manage Companies', icon: <MdWork />, roles: ['admin', 'placement_admin'] },
+      { id: 'announcements', label: 'Announcements', icon: <MdCampaign />, roles: ['admin', 'placement_admin'] },
+      { id: 'showcase', label: 'Placed Showcase', icon: <MdSchool />, roles: ['admin', 'placement_admin'] },
+      { id: 'resources', label: 'Prep Resources', icon: <MdBook />, roles: ['admin', 'placement_admin'] },
+      { id: 'staff', label: 'Create Speaker Teacher', icon: <MdGroup />, roles: ['admin', 'placement_admin'] },
+      { id: 'leaves', label: 'Attendance Grants', icon: <MdFeedback />, roles: ['placement_teacher', 'placement_speaker'] },
+      { id: 'chat', label: 'Placement Chat', icon: <MdChat />, roles: ['admin', 'placement_admin', 'placement_teacher', 'placement_speaker'] }
+    ].filter(item => item.roles.includes(role));
+
+    if ((role === 'placement_teacher' || role === 'placement_speaker') && placementMaintenanceTeachers) {
+      menuItems = menuItems.filter(item => item.id === 'chat');
+    }
+  } else {
+    menuItems = [
+      { id: 'dashboard', label: 'Dashboard', icon: <MdDashboard /> },
+      { id: 'resume', label: 'Resume Builder', icon: <MdDescription /> },
+      { id: 'coach', label: 'AI Resume Coach', icon: <MdAutoAwesome /> },
+      { id: 'openings', label: 'Job Openings', icon: <MdWork /> },
+      { id: 'sessions', label: 'Training Sessions', icon: <MdEventSeat /> },
+      { id: 'resources', label: 'Prep Resources', icon: <MdBook /> },
+      { id: 'attendance', label: 'Session Attendance', icon: <MdCheckCircle /> }
+    ];
+    if (placementMaintenanceStudents) {
+      menuItems = menuItems.filter(item => item.id === 'resume' || item.id === 'coach');
+    }
+  }
 
   const accentColor = '#6366f1'; // Indigo
-  const accentBgLight = 'rgba(99, 102, 241, 0.15)';
-  const unreadCount = notifications.filter(n => !n.read).length;
+
 
   return (
     <div className="app-layout">
@@ -134,7 +176,7 @@ export default function PlacementLayout({ children, activeTab, setActiveTab, rol
 
         <nav className="sidebar-nav">
           <div className="sidebar-section-label" style={{ color: accentColor }}>
-            {role === 'admin' ? 'Coordinator Console' : 'Student Portal'}
+            {isAdmin ? 'Coordinator Console' : 'Student Portal'}
           </div>
           {menuItems.map((item) => {
             const isActive = activeTab === item.id;
@@ -165,7 +207,7 @@ export default function PlacementLayout({ children, activeTab, setActiveTab, rol
             className="btn btn-outline btn-block"
             style={{ borderColor: accentColor, color: accentColor, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
           >
-            <MdLogout /> {role === 'admin' ? 'Coord Log Out' : 'Exit Placement'}
+            <MdLogout /> {isAdmin ? 'Coord Log Out' : 'Exit Placement'}
           </button>
         </div>
       </aside>
@@ -178,11 +220,27 @@ export default function PlacementLayout({ children, activeTab, setActiveTab, rol
               <MdMenu />
             </button>
             <span className="header-title" style={{ fontSize: '1.15rem', fontWeight: 800 }}>
-              {role === 'admin' ? 'Placement Admin' : 'Student Placement Portal'}
+              {isAdmin ? (
+                (role === 'placement_teacher' || role === 'placement_speaker') 
+                  ? 'Placement Coordinator' 
+                  : 'Placement Admin'
+              ) : 'Placement Portal'}
             </span>
           </div>
 
           <div className="header-right">
+            {/* LinkedIn Portal */}
+            <a 
+              href="https://www.linkedin.com/school/st-joseph-engineering-college-mangaluru/" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="notif-btn" 
+              style={{ marginRight: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#0077b5', textDecoration: 'none' }}
+              title="SJEC LinkedIn Portal"
+            >
+              <FaLinkedin size={20} />
+            </a>
+
             {/* Theme Toggle */}
             <button className="notif-btn" onClick={toggleTheme} style={{ marginRight: 10 }}>
               {isDark ? <MdLightMode /> : <MdDarkMode />}
@@ -190,7 +248,14 @@ export default function PlacementLayout({ children, activeTab, setActiveTab, rol
 
             {/* Notification Bell */}
             <div ref={notifRef} style={{ position: 'relative' }}>
-              <button className="notif-btn" onClick={() => setShowNotif(!showNotif)}>
+              <button
+                className="notif-btn"
+                onClick={() => setShowNotif((v) => {
+                  const next = !v;
+                  if (next) resetUnreadCount();
+                  return next;
+                })}
+              >
                 <MdNotifications />
                 {unreadCount > 0 && (
                   <span className="notif-badge" style={{ background: accentColor }}>{unreadCount}</span>
@@ -198,34 +263,15 @@ export default function PlacementLayout({ children, activeTab, setActiveTab, rol
               </button>
 
               {showNotif && (
-                <div className="notif-dropdown" style={{ right: 0, top: 40, width: 320 }}>
-                  <div className="notif-header" style={{ borderBottom: '1px solid var(--border)' }}>
-                    <h4 style={{ margin: 0 }}>Announcements</h4>
-                    {unreadCount > 0 && (
-                      <span className="badge" style={{ background: accentBgLight, color: accentColor }}>{unreadCount} new</span>
-                    )}
-                  </div>
-                  <div style={{ maxHeight: 280, overflowY: 'auto' }}>
-                    {notifications.length === 0 ? (
-                      <div className="empty-state" style={{ padding: 20 }}>
-                        <p style={{ margin: 0, fontSize: '0.86rem' }}>No recent notifications</p>
-                      </div>
-                    ) : (
-                      notifications.map((n) => (
-                        <div
-                          key={n.id}
-                          className={`notif-item ${!n.read ? 'unread' : ''}`}
-                          style={{ borderBottom: '1px solid var(--border)', padding: '12px 16px', cursor: 'pointer' }}
-                        >
-                          <p style={{ margin: '0 0 4px 0', fontSize: '0.84rem', lineHeight: '1.3' }}>{n.message}</p>
-                          <div className="notif-time" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                            {new Date(n.createdAt).toLocaleDateString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
+                <NotificationDropdown
+                  notifications={notifications}
+                  dismissNotification={dismissNotification}
+                  clearAll={clearAll}
+                  pendingDismissList={pendingDismissList}
+                  undoDismiss={undoDismiss}
+                  accentColor={accentColor}
+                  onClose={() => setShowNotif(false)}
+                />
               )}
             </div>
           </div>

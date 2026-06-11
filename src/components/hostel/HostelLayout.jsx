@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { queryDocuments, listenNotifications } from '../../appwrite/database';
+import { queryDocuments, getById } from '../../appwrite/database';
 import { Query } from 'appwrite';
 import { toast } from 'react-hot-toast';
 import {
@@ -11,6 +11,8 @@ import {
   MdCampaign
 } from 'react-icons/md';
 import logoImage from '../../assets/about-section-college.jpg';
+import { useNotifications } from '../../hooks/useNotifications';
+import NotificationDropdown from '../NotificationDropdown';
 
 export default function HostelLayout({ children, activeTab, setActiveTab, role, hostelType }) {
   const { userProfile, logout, currentUser } = useAuth();
@@ -18,8 +20,19 @@ export default function HostelLayout({ children, activeTab, setActiveTab, role, 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
-  const [notifications, setNotifications] = useState([]);
   const notifRef = useRef(null);
+  const [hostelMaintenance, setHostelMaintenance] = useState(false);
+
+  const notifUserId = role === 'warden' ? 'warden' : (currentUser?.uid || 'guest');
+  const {
+    notifications,
+    unreadCount,
+    resetUnreadCount,
+    dismissNotification,
+    clearAll,
+    pendingDismissList,
+    undoDismiss
+  } = useNotifications(notifUserId);
 
   // Sync theme status
   useEffect(() => {
@@ -29,6 +42,31 @@ export default function HostelLayout({ children, activeTab, setActiveTab, role, 
       setIsDark(true);
     }
   }, []);
+
+  // Sync hostel maintenance status
+  useEffect(() => {
+    const checkHostelMaintenance = async () => {
+      try {
+        const doc = await getById('hostelNotices', `hostel_settings_${hostelType}`);
+        if (doc && doc.content) {
+          const parsed = JSON.parse(doc.content);
+          if (parsed && parsed.maintenance_mode) {
+            setHostelMaintenance(true);
+            if (role === 'student' && !['chat', 'updates', 'rules'].includes(activeTab)) {
+              setActiveTab('chat');
+            }
+          } else {
+            setHostelMaintenance(false);
+          }
+        } else {
+          setHostelMaintenance(false);
+        }
+      } catch (e) {
+        console.warn("Failed to check hostel maintenance:", e);
+      }
+    };
+    checkHostelMaintenance();
+  }, [activeTab, role, hostelType, setActiveTab]);
 
   const toggleTheme = () => {
     if (isDark) {
@@ -53,55 +91,7 @@ export default function HostelLayout({ children, activeTab, setActiveTab, role, 
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Fetch hostel specific mock notifications
-  const loadHostelNotifications = async () => {
-    if (role === 'warden') {
-      // Mock warden notices
-      setNotifications([
-        { id: 'w1', message: 'New leave request pending approval', createdAt: new Date().toISOString(), read: false },
-        { id: 'w2', message: 'New maintenance complaint submitted', createdAt: new Date().toISOString(), read: true }
-      ]);
-    } else if (currentUser?.uid) {
-      try {
-        // Query user bills & complaints statuses to show notifications
-        const [complaints, bills] = await Promise.all([
-          queryDocuments('hostelComplaints', [Query.equal('student_id', currentUser.uid)]),
-          queryDocuments('hostelBills', [Query.equal('student_id', currentUser.uid)])
-        ]);
 
-        const list = [];
-        complaints.forEach(c => {
-          if (c.status !== 'pending') {
-            list.push({
-              id: c.$id,
-              message: `Complaint regarding "${c.category}" is now ${c.status.toUpperCase()}. Reply: ${c.reply_message || 'Checked.'}`,
-              createdAt: c.createdAt || new Date().toISOString(),
-              read: false
-            });
-          }
-        });
-
-        bills.forEach(b => {
-          if (b.status === 'unpaid') {
-            list.push({
-              id: b.$id,
-              message: `Bill reminder: ${b.billing_month} of ₹${b.amount} is unpaid. Due on ${b.due_date}.`,
-              createdAt: b.createdAt || new Date().toISOString(),
-              read: false
-            });
-          }
-        });
-
-        setNotifications(list);
-      } catch (err) {
-        console.warn("Error loading notifications:", err);
-      }
-    }
-  };
-
-  useEffect(() => {
-    loadHostelNotifications();
-  }, [role, currentUser]);
 
   const handleLogout = async () => {
     if (role === 'warden') {
@@ -133,11 +123,15 @@ export default function HostelLayout({ children, activeTab, setActiveTab, role, 
     { id: 'rules', label: 'Hostel Rules', icon: <MdBook /> }
   ];
 
+  let filteredMenuItems = [...menuItems];
+  if (role === 'student' && hostelMaintenance) {
+    filteredMenuItems = filteredMenuItems.filter(item => ['chat', 'updates', 'rules'].includes(item.id));
+  }
+
   // Theme configuration colors
   const accentColor = hostelType === 'girls' ? '#ec4899' : '#3b82f6';
   const accentBgLight = hostelType === 'girls' ? '#fce7f3' : '#dbeafe';
 
-  const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
     <div className="app-layout">
@@ -163,7 +157,7 @@ export default function HostelLayout({ children, activeTab, setActiveTab, role, 
           <div className="sidebar-section-label" style={{ color: accentColor }}>
             {role === 'warden' ? 'Warden Console' : 'Student Portal'}
           </div>
-          {menuItems.map((item) => {
+          {filteredMenuItems.map((item) => {
             const isActive = activeTab === item.id;
             return (
               <div
@@ -205,7 +199,10 @@ export default function HostelLayout({ children, activeTab, setActiveTab, role, 
               <MdMenu />
             </button>
             <span className="header-title" style={{ fontSize: '1.15rem', fontWeight: 800 }}>
-              {role === 'warden' ? 'Warden Portal' : 'Student Portal'} — {hostelType === 'girls' ? 'Girls Block' : 'Boys Block'}
+              {hostelType === 'girls'
+                ? (role === 'warden' ? 'Girls Warden Portal' : 'Girls Student Portal')
+                : (role === 'warden' ? 'Boys Warden Portal' : 'Boys Student Portal')
+              }
             </span>
           </div>
 
@@ -217,7 +214,14 @@ export default function HostelLayout({ children, activeTab, setActiveTab, role, 
 
             {/* Notification Bell */}
             <div ref={notifRef} style={{ position: 'relative' }}>
-              <button className="notif-btn" onClick={() => setShowNotif(!showNotif)}>
+              <button
+                className="notif-btn"
+                onClick={() => setShowNotif((v) => {
+                  const next = !v;
+                  if (next) resetUnreadCount();
+                  return next;
+                })}
+              >
                 <MdNotifications />
                 {unreadCount > 0 && (
                   <span className="notif-badge" style={{ background: accentColor }}>{unreadCount}</span>
@@ -225,34 +229,15 @@ export default function HostelLayout({ children, activeTab, setActiveTab, role, 
               </button>
 
               {showNotif && (
-                <div className="notif-dropdown" style={{ right: 0, top: 40, width: 320 }}>
-                  <div className="notif-header" style={{ borderBottom: '1px solid var(--border)' }}>
-                    <h4 style={{ margin: 0 }}>Hostel Alerts</h4>
-                    {unreadCount > 0 && (
-                      <span className="badge" style={{ background: accentBgLight, color: accentColor }}>{unreadCount} new</span>
-                    )}
-                  </div>
-                  <div style={{ maxHeight: 280, overflowY: 'auto' }}>
-                    {notifications.length === 0 ? (
-                      <div className="empty-state" style={{ padding: 20 }}>
-                        <p style={{ margin: 0, fontSize: '0.86rem' }}>No recent notifications</p>
-                      </div>
-                    ) : (
-                      notifications.map((n) => (
-                        <div
-                          key={n.id}
-                          className={`notif-item ${!n.read ? 'unread' : ''}`}
-                          style={{ borderBottom: '1px solid var(--border)', padding: '12px 16px', cursor: 'pointer' }}
-                        >
-                          <p style={{ margin: '0 0 4px 0', fontSize: '0.84rem', lineHeight: '1.3' }}>{n.message}</p>
-                          <div className="notif-time" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                            {new Date(n.createdAt).toLocaleDateString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
+                <NotificationDropdown
+                  notifications={notifications}
+                  dismissNotification={dismissNotification}
+                  clearAll={clearAll}
+                  pendingDismissList={pendingDismissList}
+                  undoDismiss={undoDismiss}
+                  accentColor={accentColor}
+                  onClose={() => setShowNotif(false)}
+                />
               )}
             </div>
           </div>

@@ -9,6 +9,47 @@ export const useAuth = () => useContext(AuthContext);
 
 export const usnToEmail = (usn) => `${usn.toLowerCase()}@campustwin.edu`;
 
+// Helper function to resolve branch code from a user profile
+export const getBranchFromProfile = (profile, branchesList) => {
+  if (!profile) return null;
+  if (profile.branch_id) return profile.branch_id;
+  if (profile.department) return profile.department;
+  
+  if (profile.role === 'student') {
+    // 1. Try USN
+    if (profile.usn) {
+      const upperUsn = profile.usn.toUpperCase();
+      const sortedBranches = [...(branchesList || [])].sort((a, b) => b.code.length - a.code.length);
+      for (const b of sortedBranches) {
+        if (upperUsn.includes(b.code.toUpperCase())) {
+          return b.code;
+        }
+      }
+      
+      const staticDepts = ['CSE', 'ISE', 'ECE', 'EEE', 'ME', 'CE', 'AIDS', 'AIML', 'CS', 'IS', 'EC', 'EE'];
+      const sortedStatic = [...staticDepts].sort((a, b) => b.length - a.length);
+      for (const dept of sortedStatic) {
+        if (upperUsn.includes(dept)) {
+          return dept;
+        }
+      }
+    }
+    
+    // 2. Try Class ID or Class Label
+    const classStr = profile.class_label || profile.class_id;
+    if (classStr) {
+      const upperClass = classStr.toUpperCase();
+      const sortedBranches = [...(branchesList || [])].sort((a, b) => b.code.length - a.code.length);
+      for (const b of sortedBranches) {
+        if (upperClass.includes(b.code.toUpperCase())) {
+          return b.code;
+        }
+      }
+    }
+  }
+  return null;
+};
+
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
@@ -37,23 +78,41 @@ export const AuthProvider = ({ children }) => {
       }
     }
 
-    // Resolve class_label and mentor_id dynamically for students if not explicitly set
-    if (profile && profile.role === 'student' && profile.class_id) {
-      try {
-        const cls = await getById('classes', profile.class_id);
-        if (cls) {
-          if (!profile.class_label) {
-            profile.class_label = cls.label || cls.name || profile.class_id;
+    // Resolve class_label, mentor_id, and branch_id dynamically for students if not explicitly set
+    if (profile && profile.role === 'student') {
+      if (profile.class_id) {
+        try {
+          const cls = await getById('classes', profile.class_id);
+          if (cls) {
+            if (!profile.class_label) {
+              profile.class_label = cls.label || cls.name || profile.class_id;
+            }
+            if (!profile.mentor_id && cls.mentor_id) {
+              profile.mentor_id = cls.mentor_id;
+            }
+            if (cls.semester) {
+              profile.class_semester = cls.semester;
+            }
+            if (!profile.branch_id) {
+              profile.branch_id = cls.branch || cls.branch_id;
+            }
           }
-          if (!profile.mentor_id && cls.mentor_id) {
-            profile.mentor_id = cls.mentor_id;
-          }
-          if (cls.semester) {
-            profile.class_semester = cls.semester;
+        } catch (err) {
+          console.error('Failed to resolve dynamic class/mentor details:', err);
+        }
+      }
+
+      // Fallback: resolve branch_id from USN
+      if (!profile.branch_id && profile.usn) {
+        const upperUsn = profile.usn.toUpperCase();
+        const staticDepts = ['CSE', 'ISE', 'ECE', 'EEE', 'ME', 'CE', 'AIDS', 'AIML', 'CS', 'IS', 'EC', 'EE'];
+        const sortedStatic = [...staticDepts].sort((a, b) => b.length - a.length);
+        for (const dept of sortedStatic) {
+          if (upperUsn.includes(dept)) {
+            profile.branch_id = dept;
+            break;
           }
         }
-      } catch (err) {
-        console.error('Failed to resolve dynamic class/mentor details:', err);
       }
     }
 
@@ -62,7 +121,7 @@ export const AuthProvider = ({ children }) => {
 
   const applyMaintenanceMode = (profile, branchesList) => {
     if (!profile || profile.role === 'admin') return profile;
-    const branchCode = profile.branch_id || profile.department;
+    const branchCode = getBranchFromProfile(profile, branchesList);
     if (!branchCode) return profile;
 
     const branchInfo = branchesList.find(b => b.code === branchCode);
@@ -77,12 +136,22 @@ export const AuthProvider = ({ children }) => {
       if (blockedByRole || blockedByLegacy) {
         return {
           ...profile,
+          branch_id: profile.branch_id || branchCode,
           maintenance: true,
           maintenance_message: branchInfo.maintenance_message || 'The platform is under maintenance.',
           maintenance_eta: branchInfo.maintenance_eta || ''
         };
       }
     }
+    
+    // Ensure branch_id is set if resolved
+    if (!profile.branch_id && branchCode) {
+      return {
+        ...profile,
+        branch_id: branchCode
+      };
+    }
+    
     return profile;
   };
 

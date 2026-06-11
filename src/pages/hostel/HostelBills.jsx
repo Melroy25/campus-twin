@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { queryDocuments, addDocument, updateDocument } from '../../appwrite/database';
+import { queryDocuments, addDocument, updateDocument, addNotification } from '../../appwrite/database';
 import { uploadFile } from '../../appwrite/storage';
 import { Query } from 'appwrite';
 import { toast } from 'react-hot-toast';
@@ -35,7 +35,7 @@ const SEMESTERS = [
 export default function HostelBills({ hostelType, role }) {
   const { userProfile } = useAuth();
   const accent = hostelType === 'girls' ? '#ec4899' : '#3b82f6';
-  const accentLight = hostelType === 'girls' ? '#fce7f3' : '#dbeafe';
+  const accentLight = hostelType === 'girls' ? 'var(--accent-light-girls)' : 'var(--accent-light-boys)';
   const accentDark = hostelType === 'girls' ? '#be185d' : '#1e40af';
 
   const [bills, setBills] = useState([]);
@@ -424,6 +424,15 @@ export default function HostelBills({ hostelType, role }) {
         payment_remarks: remarks.trim(),
         receipt_url: mockReceiptUrl
       });
+      try {
+        await addNotification({
+          user_id: 'warden',
+          message: `💳 Payment proof submitted by ${selectedBillForProof.student_name} for ${selectedBillForProof.billing_month} (₹${selectedBillForProof.amount})`,
+          category: 'hostel'
+        });
+      } catch (notifErr) {
+        console.warn("Failed to notify warden of payment proof:", notifErr);
+      }
       toast.success('Payment proof submitted successfully! Warden will review.');
       setShowProofModal(false);
       setSelectedBillForProof(null);
@@ -467,6 +476,25 @@ export default function HostelBills({ hostelType, role }) {
       }
 
       await updateDocument('hostelBills', billId, updateFields);
+      try {
+        let notifMsg = '';
+        if (actionType === 'approve') {
+          notifMsg = `✅ Your payment of ₹${selectedBillForVerify.amount} for ${selectedBillForVerify.billing_month} has been APPROVED by the warden.`;
+        } else if (actionType === 'reject') {
+          notifMsg = `❌ Your payment proof for ${selectedBillForVerify.billing_month} was REJECTED by the warden.${rejectReason ? ` Reason: "${rejectReason}"` : ''}`;
+        } else if (actionType === 'progress') {
+          notifMsg = `⏳ Your payment proof for ${selectedBillForVerify.billing_month} is now under warden review.`;
+        }
+        if (notifMsg) {
+          await addNotification({
+            user_id: selectedBillForVerify.student_id,
+            message: notifMsg,
+            category: 'hostel'
+          });
+        }
+      } catch (notifErr) {
+        console.warn("Failed to notify student of bill verification:", notifErr);
+      }
       toast.success(msg);
       setShowVerifyModal(false);
       setSelectedBillForVerify(null);
@@ -524,6 +552,17 @@ export default function HostelBills({ hostelType, role }) {
         });
       });
       await Promise.all(promises);
+      try {
+        for (const sid of selectedStudentIds) {
+          await addNotification({
+            user_id: sid,
+            message: `💵 New Hostel Bill: ${billMonth} mess/rent fee of ₹${billAmount} is generated. Due on ${formatDate(billDueDate)}.`,
+            category: 'hostel'
+          });
+        }
+      } catch (notifErr) {
+        console.warn("Failed to notify students of new bills:", notifErr);
+      }
       toast.success(`Bill sent to ${selectedStudentIds.length} student(s) successfully!`);
       setShowAddModal(false);
       setSelectedStudentIds([]);

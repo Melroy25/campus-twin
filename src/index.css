@@ -3,18 +3,18 @@
 
 /* ===== CSS Variables ===== */
 :root {
-  --primary: #4f6ef7;
-  --primary-light: #eef1ff;
-  --primary-dark: #3a56d4;
-  --secondary: #6c757d;
-  --success: #28a745;
-  --success-light: #e8f5e9;
-  --warning: #ffc107;
-  --warning-light: #fff8e1;
-  --danger: #dc3545;
-  --danger-light: #fdecea;
-  --info: #17a2b8;
-  --info-light: #e0f7fa;
+  --primary: #4285F4;
+  --primary-light: #e8f0fe;
+  --primary-dark: #1a73e8;
+  --secondary: #5f6368;
+  --success: #34A853;
+  --success-light: #e6f4ea;
+  --warning: #FBBC04;
+  --warning-light: #fef7e0;
+  --danger: #EA4335;
+  --danger-light: #fce8e6;
+  --info: #00b6d4;
+  --info-light: #e2fbfd;
 
   --bg: #f4f6fb;
   --surface: #ffffff;
@@ -40,29 +40,35 @@
   --radius-xl: 24px;
 
   --transition: 0.2s ease;
+  
+  --accent-light-boys: #dbeafe;
+  --accent-light-girls: #fce7f3;
 }
 
 body.dark-theme {
-  --bg: #12141c;
-  --surface: #1e212b;
-  --surface-1: #1e212b;
-  --surface-2: #2a2d3a;
-  --border: #333747;
-  --text: #f0f2f5;
-  --text-primary: #f0f2f5;
-  --text-secondary: #a0a5b5;
-  --text-muted: #6b7280;
+  --bg: #0B0D17;         /* GDG Space Navy background */
+  --surface: #151825;    /* GDG card surface */
+  --surface-1: #151825;
+  --surface-2: #1E2235;  /* Hover/Nested surface */
+  --border: rgba(255, 255, 255, 0.08); /* Clean modern border */
+  --text: #FFFFFF;
+  --text-primary: #FFFFFF;
+  --text-secondary: #A0AEC0;
+  --text-muted: #718096;
   
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
-  --shadow: 0 4px 6px rgba(0,0,0,0.5);
-  --shadow-md: 0 10px 15px rgba(0,0,0,0.5);
-  --shadow-lg: 0 20px 25px rgba(0,0,0,0.6);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.5);
+  --shadow: 0 4px 6px rgba(0,0,0,0.6);
+  --shadow-md: 0 10px 15px rgba(0,0,0,0.6);
+  --shadow-lg: 0 20px 25px rgba(0,0,0,0.7);
 
-  --primary-light: rgba(79, 110, 247, 0.15);
-  --success-light: rgba(40, 167, 69, 0.15);
-  --warning-light: rgba(255, 193, 7, 0.15);
-  --danger-light: rgba(220, 53, 69, 0.15);
-  --info-light: rgba(23, 162, 184, 0.15);
+  --primary-light: rgba(66, 133, 244, 0.15);
+  --success-light: rgba(52, 168, 83, 0.15);
+  --warning-light: rgba(251, 188, 4, 0.15);
+  --danger-light: rgba(234, 67, 53, 0.15);
+  --info-light: rgba(0, 182, 212, 0.15);
+
+  --accent-light-boys: rgba(59, 130, 246, 0.15);
+  --accent-light-girls: rgba(236, 72, 153, 0.15);
 }
 
 /* ===== Reset & Base ===== */
@@ -74,18 +80,22 @@ body.dark-theme {
 
 html { 
   scroll-behavior: smooth;
-  font-size: 13px; /* Scales down all rem units */
+  font-size: 14px; /* Scaled up from 13px for much better readability */
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg);
   color: var(--text-primary);
-  line-height: 1.4;
-  font-size: 12px;
+  line-height: 1.5; /* Relaxed from 1.4 for better reading rhythm */
+  font-size: 13px;   /* Scaled up from 12px */
   -webkit-font-smoothing: antialiased;
   user-select: none;
   -webkit-user-select: none;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 a { text-decoration: none; color: inherit; -webkit-tap-highlight-color: transparent; outline: none; }
@@ -105,6 +115,8 @@ input, textarea, select { font-family: inherit; user-select: auto; -webkit-user-
 .app-layout {
   display: flex;
   min-height: 100vh;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .main-content {
@@ -114,6 +126,8 @@ input, textarea, select { font-family: inherit; user-select: auto; -webkit-user-
   display: flex;
   flex-direction: column;
   transition: margin-left var(--transition);
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .page-content {
@@ -123,20 +137,23 @@ input, textarea, select { font-family: inherit; user-select: auto; -webkit-user-
 }
 
 /* ===== Typography ===== */
-h1 { font-size: 1.75rem; font-weight: 700; color: var(--text-primary); }
-h2 { font-size: 1.4rem; font-weight: 600; color: var(--text-primary); }
-h3 { font-size: 1.1rem; font-weight: 600; color: var(--text-primary); }
-h4 { font-size: 0.95rem; font-weight: 600; color: var(--text-secondary); }
-p  { color: var(--text-secondary); }
+h1, h2, h3, .page-title {
+  letter-spacing: -0.025em; /* Tighter tracking like Google Sans display headings */
+}
+h1 { font-size: 1.95rem; font-weight: 700; color: var(--text-primary); }
+h2 { font-size: 1.55rem; font-weight: 600; color: var(--text-primary); }
+h3 { font-size: 1.22rem; font-weight: 600; color: var(--text-primary); }
+h4 { font-size: 1.0rem; font-weight: 600; color: var(--text-secondary); }
+p  { color: var(--text-secondary); font-size: 0.92rem; line-height: 1.55; }
 
 .page-title {
-  font-size: 1.25rem;
+  font-size: 1.4rem;
   font-weight: 700;
   color: var(--text-primary);
   margin-bottom: 2px;
 }
 .page-subtitle {
-  font-size: 0.875rem;
+  font-size: 0.9rem;
   color: var(--text-muted);
   margin-bottom: 24px;
 }
@@ -334,10 +351,12 @@ tbody tr:hover { background: var(--surface-2); }
 .badge-primary  { background: var(--primary-light); color: var(--primary-dark); }
 
 /* ===== Modals ===== */
-.modal-overlay {
+.modal-overlay,
+.modal-container {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(4px);
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -346,7 +365,15 @@ tbody tr:hover { background: var(--surface-2); }
   animation: fadeIn 0.15s ease;
 }
 
-.modal {
+.modal-container {
+  display: none;
+}
+.modal-container.active {
+  display: flex;
+}
+
+.modal,
+.modal-content {
   background: var(--surface);
   border-radius: var(--radius-lg);
   padding: 28px;
@@ -354,7 +381,10 @@ tbody tr:hover { background: var(--surface-2); }
   max-width: 500px;
   box-shadow: var(--shadow-lg);
   animation: slideUp 0.2s ease;
+  overflow-y: auto;
+  max-height: 90vh;
 }
+
 
 .modal-header {
   display: flex;
@@ -1336,7 +1366,8 @@ tbody tr:hover { background: var(--surface-2); }
   .main-content { margin-left: 0; }
   .header { left: 0; }
   .hamburger { display: flex; }
-  .page-content { padding: 16px; }
+  .page-content { padding: 12px !important; }
+  .card { padding: 14px !important; }
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
   .timetable-grid { grid-template-columns: 1fr; }
   .tt-scroll-wrapper { margin: 0 -16px; border-radius: 0; border-left: none; border-right: none; }
@@ -1345,6 +1376,16 @@ tbody tr:hover { background: var(--surface-2); }
   h1 { font-size: 1.4rem; }
   .login-card { padding: 28px 20px; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .grid-responsive-1col { grid-template-columns: 1fr !important; }
+  .flex-responsive-column { flex-direction: column !important; }
+  
+  /* Mobile AI Chat Card overrides */
+  .ai-chat-card {
+    height: calc(100vh - 95px) !important;
+  }
+  .chat-header {
+    padding: 12px 16px !important;
+  }
 }
 
 @media (min-width: 769px) {
@@ -1354,3 +1395,91 @@ tbody tr:hover { background: var(--surface-2); }
 @media (max-width: 480px) {
   .stat-grid { grid-template-columns: 1fr; }
 }
+
+/* ===== AI Chat Card & Header default styles ===== */
+.ai-chat-card {
+  height: calc(100vh - 190px);
+}
+
+.chat-header {
+  background: var(--surface-1);
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  gap: 12px;
+}
+
+.chat-header-desc {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+/* ===== Hostel Chat Container height overrides ===== */
+.hostel-chat-container {
+  height: calc(100vh - 120px);
+  min-height: 500px;
+}
+
+@media (max-width: 768px) {
+  .hostel-chat-container {
+    height: calc(100vh - 80px) !important;
+    min-height: 400px;
+  }
+}
+
+/* ===== Class Chat Layout height overrides ===== */
+.chat-layout {
+  height: calc(100vh - 150px);
+}
+
+@media (max-width: 768px) {
+  .chat-layout {
+    height: calc(100vh - 80px) !important;
+  }
+}
+
+/* ===== Class Chat & Hostel Chat Header overrides ===== */
+@media (max-width: 768px) {
+  .class-chat-header,
+  .hostel-chat-header {
+    padding: 8px 12px !important;
+  }
+  .class-chat-header h3,
+  .hostel-chat-header h2 {
+    font-size: 0.88rem !important;
+  }
+  .class-chat-header div,
+  .hostel-chat-header div {
+    font-size: 0.68rem !important;
+  }
+}
+
+/* ===== Hostel Updates & Polls Console Layout ===== */
+.hostel-updates-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 24px;
+}
+
+.hostel-updates-grid.single-column {
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 768px) {
+  .hostel-updates-grid,
+  .hostel-updates-grid.single-column {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
