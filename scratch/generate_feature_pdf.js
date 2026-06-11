@@ -4,7 +4,7 @@ import path from 'path';
 
 // Define target PDF path in the project root
 const pdfPath = path.resolve('Campus_Twin_Features_Report.pdf');
-console.log(`Generating Expanded PDF at: ${pdfPath}`);
+console.log(`Generating Thorough PDF at: ${pdfPath}`);
 
 const doc = new PDFDocument({
   size: 'A4',
@@ -33,17 +33,32 @@ doc.fillColor(PRIMARY)
    .text('CAMPUS TWIN', { tracking: 1 });
 
 doc.fillColor(DARK)
-   .fontSize(13)
+   .fontSize(12)
    .font('Helvetica')
-   .text('Unified Digital College ERP System — Complete Features Summary Report', { lineGap: 6 });
+   .text('Unified Digital College ERP System — Complete System Blueprint & Features Summary', { lineGap: 4 });
 
 doc.fillColor(MUTED)
-   .fontSize(9)
-   .text(`Generated on: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}  |  Total Documented Features: 100`);
+   .fontSize(8.5)
+   .text(`Generated on: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}  |  Thorough Description Mode  |  Total Documented Features: 86`);
 
 doc.moveDown(0.8);
 doc.strokeColor(LINE_COLOR).lineWidth(1).moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
 doc.moveDown(1.2);
+
+// Page 1 Welcome & Architecture highlights
+doc.fillColor(DARK)
+   .font('Helvetica-Bold')
+   .fontSize(13)
+   .text('Executive System Architecture Blueprint', { lineGap: 6 });
+
+doc.fillColor(DARK)
+   .font('Helvetica')
+   .fontSize(9.5)
+   .text('This document outlines the software blueprint and features summary of Campus Twin, a comprehensive educational resource planning (ERP) platform. Built utilizing client-side encryption, WebSockets communication, Appwrite databases, and custom algorithms, the system operates across student, faculty, mentor, and administrator modules to create a secure, real-time environment. Special emphasis is placed on security protocols (anti-screenshot filters, AES-256 client-side encryption) and advanced mathematical solvers (timetable constraint solver).', { lineGap: 4 });
+
+doc.moveDown(1);
+doc.strokeColor(LINE_COLOR).lineWidth(0.5).moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+doc.moveDown(1);
 
 // Helper for Section Titles
 function addSectionTitle(title, color) {
@@ -61,17 +76,23 @@ function addSectionTitle(title, color) {
   
   doc.fillColor('#ffffff')
      .font('Helvetica-Bold')
-     .fontSize(10)
+     .fontSize(9.5)
      .text(title.toUpperCase(), 60, startY + 6);
      
-  doc.y = startY + 30; // Set y coordinate past the banner
+  doc.y = startY + 32; // Set y coordinate past the banner
 }
 
-// Helper for Feature Entry
+// Helper for Feature Entry with Thorough multi-line wrapping checks
 let currentSNo = 1;
 function addFeatureRow(name, desc, difficulty) {
+  // Estimate height: name (12pt), badge (12pt), desc (calculated wrap height)
+  // PDFKit text height estimation: roughly font_size * line_count
+  const textOptions = { width: doc.page.width - 205, lineGap: 2.5 };
+  const descHeight = doc.heightOfString(desc, textOptions);
+  const totalRowHeight = descHeight + 24; // padding for name, border, etc.
+
   // Check if we need to wrap to the next page before drawing
-  if (doc.y > doc.page.height - 100) {
+  if (doc.y + totalRowHeight > doc.page.height - 70) {
     doc.addPage();
     doc.y = 60; // reset y on new page
   }
@@ -80,13 +101,13 @@ function addFeatureRow(name, desc, difficulty) {
   
   // Row container background on alternate rows
   if (currentSNo % 2 === 0) {
-    doc.rect(50, startY - 4, doc.page.width - 100, 48).fill('#f8fafc');
+    doc.rect(50, startY - 4, doc.page.width - 100, totalRowHeight + 4).fill('#f8fafc');
   }
 
   // Draw S.No.
   doc.fillColor(DARK)
      .font('Helvetica-Bold')
-     .fontSize(9.5)
+     .fontSize(9)
      .text(`${currentSNo}.`, 60, startY);
 
   // Draw Feature Name
@@ -109,80 +130,114 @@ function addFeatureRow(name, desc, difficulty) {
   // Draw Description
   doc.fillColor(DARK)
      .font('Helvetica')
-     .fontSize(9)
-     .text(desc, 85, startY + 14, { width: doc.page.width - 205, lineGap: 2 });
+     .fontSize(8.5)
+     .text(desc, 85, startY + 14, textOptions);
 
   // Draw bottom light border
   doc.strokeColor('#f1f5f9')
      .lineWidth(0.8)
-     .moveTo(50, startY + 40)
-     .lineTo(doc.page.width - 50, startY + 40)
+     .moveTo(50, startY + totalRowHeight)
+     .lineTo(doc.page.width - 50, startY + totalRowHeight)
      .stroke();
 
-  doc.y = startY + 44; // Set next y coordinate
+  doc.y = startY + totalRowHeight + 6; // Set next y coordinate
   currentSNo++;
 }
 
 // ======================== CATEGORY 1: SECURITY & USER MANAGEMENT ========================
-addSectionTitle('1. Core Security & Authentication Modules', PRIMARY);
+addSectionTitle('1. Core Security, Cryptography & User Audits', PRIMARY);
 
 addFeatureRow(
   'Secure Appwrite Authentication',
-  'Unified login portal using secure Appwrite session creation for students, teachers, mentors, and administrators.',
+  'Protects database entry using Appwrite Session Creation. It validates user USN or Email alongside encrypted passwords, and generates session cookies to prevent session-jacking, verifying access permissions on every route navigation.',
   'Major'
 );
 addFeatureRow(
-  'First-Time Login Force Password Change',
-  'Forces newly created users to update their password immediately upon their first login to ensure account security.',
+  'First-Time Password Force Reset',
+  'Secures new accounts by checking if userRoles.must_change_password is true. If true, the system blocks dashboard access and forces the user to choose a new, strong password, removing their initial password record from database logs upon submission.',
   'Major'
 );
 addFeatureRow(
-  'Forgot Password OTP Verification Flow',
-  'A multi-step recovery flow allowing users to reset their forgotten passwords using a secure 6-digit email verification code.',
+  'Forgot Password OTP Recovery Flow',
+  'Sends a secure, random 6-digit verification code to the user\'s registered email address using Nodemailer SMTP netlify functions. The system enforces a 5-minute expiry timer and checks the entered OTP before unlocking the password update panel.',
   'Major'
 );
 addFeatureRow(
   'Secure Account Deletion Serverless API',
-  'A Netlify serverless function that deletes user profiles and database records securely without exposing credentials.',
+  'Protects system security by performing user profile deletions through a netlify serverless function. This function calls admin APIs to remove both database profiles and authentication records, preventing raw API key exposures in front-end files.',
   'Major'
 );
 addFeatureRow(
   'Multi-Role Route Authorization (Private Routes)',
-  'Strict UI-level and route-level authorization restricting pages based on user roles (Student, Teacher, Mentor, Admin).',
+  'Restricts page access by wrapping pages in a client-side PrivateRoute component. This component reads the userProfile state and redirects unauthorized accounts (e.g. students trying to access admin configurations) back to their designated role dashboard.',
   'Major'
 );
 addFeatureRow(
   'Session Persistence Manager',
-  'Automatic theme and login session conservation integrated with browser local storage.',
+  'Uses browser local storage to preserve active user theme choices and authentication session references, ensuring that users do not need to re-login upon refreshing or closing the browser.',
   'Simple'
 );
 addFeatureRow(
   'Interactive OTP Demo Mode Simulation',
-  'Falls back to displaying the generated OTP code directly on the UI when SMTP services are unconfigured, enabling seamless developer testing.',
+  'Detects when local SMTP credentials (SMTP_EMAIL/SMTP_PASSWORD) are not configured, and automatically displays the generated OTP code directly on the web interface in a bright blue banner, enabling developers to test logins without an email server.',
   'Simple'
 );
 addFeatureRow(
-  'Global Toast Alerts Integration',
-  'Integrated React Hot Toast for displaying beautiful, non-intrusive status notifications and warning messages.',
+  'Global Toast Alert Prompts',
+  'Integrates React Hot Toast to display real-time feedback animations during asynchronous database tasks (loading spinners, success logs, and error warnings) for a premium user feel.',
   'Simple'
 );
 addFeatureRow(
   'Role-Based Redirect Engine',
-  'Validates login profiles and automatically redirects users to their respective home dashboards upon entering the domain.',
+  'Evaluates the userProfile object immediately upon loading the home route and performs navigation redirects, ensuring students land on /student, faculty on /teacher, and super-admins on /admin.',
   'Simple'
 );
 
-// ======================== CATEGORY 2: STUDENT PORTAL ========================
-addSectionTitle('2. Student Portal Features', PRIMARY);
+// ======================== CATEGORY 2: THE SECURE DOCUMENT CABINET ========================
+addSectionTitle('2. Document Cabinet with Secure Anti-Screenshot Suite', SECONDARY);
 
 addFeatureRow(
-  'Interactive Student Home Dashboard',
-  'A grid-based dashboard presenting current day lectures, quick statistics, announcements, and navigation widgets.',
+  'Secure Document Locker Panel',
+  'Provides students, mentors, and administrators with an encrypted cloud cabinet to upload and organize files (like OD certificates, fee receipts, or medical proofs) using folder hierarchies.',
   'Major'
 );
 addFeatureRow(
-  'Interactive Timetable Grid Viewer',
-  'Displays class timetables with customizable colors and clean layout representations.',
+  'AES-GCM Client-Side Encryption',
+  'Encrypts document names, storage URLs, and folder names directly on the user\'s browser using AES-GCM before saving them to Appwrite. This prevents database administrators or host servers from reading file details in plaintext.',
+  'Major'
+);
+addFeatureRow(
+  'Anti-Screenshot secure document shield',
+  'Tracks browser window focus. The moment the user clicks away, opens external capture tools (like Snipping Tool or Snagit), or loses tab focus, the system applies a CSS body blur filter: filter: blur(60px) brightness(0) !important; background: #000; turning the screen pitch-black and rendering any screenshot blank/unreadable.',
+  'Major'
+);
+addFeatureRow(
+  'Print Blocker CSS overrides',
+  'Injects media queries (@media print { body { display: none !important; } }) that hide the page contents entirely if a print action (Ctrl+P) is triggered, preventing users from printing or printing-to-PDF sensitive documents.',
+  'Minor'
+);
+addFeatureRow(
+  'Right-Click and Inspector Blocker',
+  'Disables browser context menus on the documents page (onContextMenu) to prevent users from right-clicking to "Inspect Element," downloading thumbnail assets, or looking up encrypted CDN links.',
+  'Simple'
+);
+addFeatureRow(
+  'Clipboard Copy Prevention',
+  'Disables clipboard copy events (onCopy) and text selection (userSelect: none) on document elements, popping up a security toast alert if text theft is attempted.',
+  'Simple'
+);
+
+// ======================== CATEGORY 3: ACADEMICS & STUDENT PORTAL ========================
+addSectionTitle('3. Student Portal & Academics Module', PRIMARY);
+
+addFeatureRow(
+  'Student Dashboard Hub',
+  'A dashboard page mapping out a student\'s daily schedule, highlight banners of current lectures, notifications feed, and quick link cards to academics or portals.',
+  'Major'
+);
+addFeatureRow(
+  'Interactive Timetable Grid',
+  'Fetches the class timetable database and maps it into a weekly schedule grid, highlighting the ongoing lecture based on the user\'s system clock.',
   'Major'
 );
 addFeatureRow(
@@ -191,97 +246,43 @@ addFeatureRow(
   'Major'
 );
 addFeatureRow(
-  'AICTE Activity Points Tracker',
-  'Comprehensive panel for students to log AICTE activity points and upload supporting certificates.',
+  'AICTE Activity Points Log',
+  'Allows students to log activities (seminars, sports, NGO works) to earn mandatory university AICTE points, with file upload capabilities for certificate verification.',
   'Major'
 );
 addFeatureRow(
-  'Subject-Wise Internal Marks Sheet',
-  'Displays marks scored in internal assessments, test series, and practical evaluations.',
+  'Attendance Percentage Tracker',
+  'Fetches classroom logs to display overall and subject-wise attendance percentages, with color-coded bars that turn amber/red if attendance falls below the 75% limit.',
   'Minor'
 );
 addFeatureRow(
-  'Academic Marks Card PDF Exporter',
-  'Generates and exports official university marks cards in PDF format directly from the browser.',
+  'Digital Marks Card PDF Exporter',
+  'Takes student academic marks cards and formats them into a download-ready official PDF report, allowing students to print grades directly.',
   'Minor'
 );
 addFeatureRow(
-  'Interactive Calendar of Events',
-  'A visual timeline presenting academic cycles, holidays, events, and examination dates.',
+  'College Events Timeline Calendar',
+  'Displays academic cycles, workshops, exams, and holidays posted by admins in an interactive, visual timeline layout.',
   'Minor'
 );
 addFeatureRow(
-  'Attendance Percentage Progress Bar',
-  'Displays overall and subject-wise attendance with warning indicators if it falls below 75%.',
-  'Minor'
-);
-addFeatureRow(
-  'Real-Time Chat Notification Feed',
-  'Displays a count of unread messages and updates from the class group chat rooms.',
-  'Simple'
-);
-addFeatureRow(
-  'Direct Portal Profile View',
-  'Displays student roll number, USN, division, and official department records.',
-  'Simple'
-);
-addFeatureRow(
-  'Class Announcement Bulletin Board',
-  'A clean notification panel highlighting warnings, notices, and test schedules.',
-  'Simple'
-);
-addFeatureRow(
-  'Live Session Highlight',
-  'Detects the current time and highlights the ongoing lecture slot in the student dashboard.',
-  'Simple'
-);
-addFeatureRow(
-  'PWA Theme Switcher Integration',
-  'Allows students to toggle between clean Light Mode and elegant Dark Mode themes.',
+  'Class Announcement Bulletin',
+  'A notification panel highlighting warnings, notices, and test schedules.',
   'Simple'
 );
 addFeatureRow(
   'LinkedIn Official Profile Redirect',
-  'Sidebar quick-link redirecting students to their college official LinkedIn pages.',
+  'A quick-link sidebar shortcut to the institutional LinkedIn profile for student convenience.',
   'Simple'
 );
 addFeatureRow(
-  'Official College Website External Redirect',
-  'Sidebar quick-link redirecting students to the main institutional website.',
-  'Simple'
-);
-
-// ======================== CATEGORY 3: COMPLAINT BOX & REGULATORY LINKS ========================
-addSectionTitle('3. Complaint Box & Anti-Ragging Hotline', SECONDARY);
-
-addFeatureRow(
-  'Anonymous Student Complaint Box',
-  'Allows students to post grievance issues, submit feedback, or raise complaints directly to their mentors/admins.',
-  'Major'
-);
-addFeatureRow(
-  'Complaint Ticket Status Tracker',
-  'A visual timeline representing whether a complaint is Open, In-Progress, or Resolved.',
-  'Minor'
-);
-addFeatureRow(
-  'Admin Complaint Resolver Interface',
-  'Allows administrators to filter complaints by status, assign resolvers, and post closing feedback.',
-  'Minor'
-);
-addFeatureRow(
-  'Official Anti-Ragging Website Link',
-  'Integrated national anti-ragging portal redirect link under the complaint box for safety.',
-  'Simple'
-);
-addFeatureRow(
-  'Institutional Drug Prevention Portal Link',
-  'Direct access link to government drug abuse prevention databases and local helplines.',
+  'College Website Quick Redirect',
+  'A quick-link sidebar shortcut to the main university website.',
   'Simple'
 );
 
-// ======================== CATEGORY 4: TEACHER & FACULTY PORTAL ========================
-addSectionTitle('4. Teacher & Faculty Portal Features', PRIMARY);
+// ======================== CATEGORY 4: TEACHER CLASSROOM CONTROL ========================
+addSectionTitle('4. Teacher Classroom Management', PRIMARY);
 
 addFeatureRow(
   'Teacher Personal Dashboard',
@@ -324,8 +325,8 @@ addFeatureRow(
   'Simple'
 );
 
-// ======================== CATEGORY 5: MENTOR & ADVISOR PORTAL ========================
-addSectionTitle('5. Mentor & Advisor Portal Features', PRIMARY);
+// ======================== CATEGORY 5: MENTOR & ADVISOR AUDIT ========================
+addSectionTitle('5. Mentor & Advisor Auditing Tools', PRIMARY);
 
 addFeatureRow(
   'Mentor Group Dashboard',
@@ -363,8 +364,37 @@ addFeatureRow(
   'Simple'
 );
 
-// ======================== CATEGORY 6: ADMIN & ENTERPRISE ERP ========================
-addSectionTitle('6. Admin ERP & Campus Configurations', PRIMARY);
+// ======================== CATEGORY 6: COMPLAINT BOX & HELPLINES ========================
+addSectionTitle('6. Complaint Box & Anti-Ragging Hotline', SECONDARY);
+
+addFeatureRow(
+  'Anonymous Student Complaint Box',
+  'Allows students to post grievance issues, submit feedback, or raise complaints directly to their mentors/admins.',
+  'Major'
+);
+addFeatureRow(
+  'Complaint Ticket Status Tracker',
+  'A visual timeline representing whether a complaint is Open, In-Progress, or Resolved.',
+  'Minor'
+);
+addFeatureRow(
+  'Admin Complaint Resolver Interface',
+  'Allows administrators to filter complaints by status, assign resolvers, and post closing feedback.',
+  'Minor'
+);
+addFeatureRow(
+  'Official Anti-Ragging Website Link',
+  'Integrated national anti-ragging portal redirect link under the complaint box for safety.',
+  'Simple'
+);
+addFeatureRow(
+  'Institutional Drug Prevention Portal Link',
+  'Direct access link to government drug abuse prevention databases and helplines.',
+  'Simple'
+);
+
+// ======================== CATEGORY 7: CAMPUS ERP & AUTOMATION ========================
+addSectionTitle('7. Institutional ERP & Automation configs', PRIMARY);
 
 addFeatureRow(
   'AI-Assisted Automated Timetable Generator',
@@ -427,47 +457,47 @@ addFeatureRow(
   'Simple'
 );
 
-// ======================== CATEGORY 7: HOSTEL ERP MODULE ========================
-addSectionTitle('7. Hostel Management System (ERP)', SECONDARY);
+// ======================== CATEGORY 8: HOSTEL MANAGEMENT SYSTEM ========================
+addSectionTitle('8. Hostel ERP (Universal Boarding Management System)', SECONDARY);
 
 addFeatureRow(
-  'Hostel Selection Gateway',
-  'Allows logging into either Boys\' or Girls\' hostel divisions based on student roles.',
+  'Universal Boarding Architecture',
+  'Built with a modular database structure isolated from the university core. This system can be adopted by any residential complex, boarding school, hotel, or apartment booking system by swapping API keys.',
   'Major'
 );
 addFeatureRow(
-  'Warden Administration Portal',
-  'A full dashboard for hostel wardens to allocate rooms, view bills, and approve leave outpasses.',
+  'Hostel Division Gateway',
+  'A portal directory that splits user sessions into Boys\' Hostel or Girls\' Hostel databases based on gender mapping.',
   'Major'
 );
 addFeatureRow(
-  'Warden Room Allocation Board',
-  'A visual manager for hostel room occupancy, detailing room statuses and resident USNs.',
+  'Warden Room Allocation Map',
+  'A visual manager for hostel room occupancy, detailing room statuses, occupied beds, and resident USNs in real-time.',
   'Major'
 );
 addFeatureRow(
   'Student Hostel Outpass & Leave Form',
-  'Enables students to submit leave applications (outpasses) specifying destination and dates.',
+  'Enables students to submit leave applications (outpasses) specifying checkout times, checkout dates, destination, and emergency contact details.',
   'Major'
 );
 addFeatureRow(
   'Warden Leave Request Approval Queue',
-  'Allows wardens to inspect student outpasses and approve or reject them with feedback.',
+  'Allows wardens to inspect student outpasses and approve or reject them with feedback, immediately changing the resident\'s checkout status.',
   'Major'
 );
 addFeatureRow(
   'Automated Monthly Bill Generator',
-  'Runs a monthly batch calculation to generate mess, rent, and utility bills for residents.',
+  'Runs a monthly batch calculation to generate mess, rent, and utility bills for residents based on check-in duration and utility coefficients.',
   'Minor'
 );
 addFeatureRow(
   'Resident Fee Tracker & Payment status',
-  'Displays resident payment history, showing paid, pending, or overdue hostel fees.',
+  'Displays resident payment history, showing paid, pending, or overdue hostel fees for financial tracking.',
   'Minor'
 );
 addFeatureRow(
   'Hostel Grievance Board',
-  'Allows residents to lodge complaints regarding rooms, Wi-Fi, electricity, or mess quality.',
+  'Allows residents to lodge complaints regarding rooms, Wi-Fi, electricity, or mess quality directly to the warden dashboard.',
   'Minor'
 );
 addFeatureRow(
@@ -481,14 +511,9 @@ addFeatureRow(
   'Simple'
 );
 
-// ======================== CATEGORY 8: PLACEMENT PORTAL ========================
-addSectionTitle('8. Placement & Career Portal', PRIMARY);
+// ======================== CATEGORY 9: CAREER & PLACEMENT PORTAL ========================
+addSectionTitle('9. Career & Placement Portal', PRIMARY);
 
-addFeatureRow(
-  'Placement Selection Gateway',
-  'Enables logging in as either student applicant or Placement Officer administrator.',
-  'Major'
-);
 addFeatureRow(
   'Placement Officer Portal',
   'A control dashboard for managing campus drives, applicant lists, and job profiles.',
@@ -535,8 +560,8 @@ addFeatureRow(
   'Simple'
 );
 
-// ======================== CATEGORY 9: AI ASSISTANT & CHATBOT ========================
-addSectionTitle('9. Copilot AI Assistant & Chatbot Widget', SECONDARY);
+// ======================== CATEGORY 10: COPILOT AI ASSISTANT ========================
+addSectionTitle('10. Copilot AI Assistant & WebSockets Chat', SECONDARY);
 
 addFeatureRow(
   'Copilot AI Chatbot Widget',
@@ -558,10 +583,6 @@ addFeatureRow(
   'A floating button that opens a beautiful modal chat overlay with one click.',
   'Simple'
 );
-
-// ======================== CATEGORY 10: CHAT, PWA & GENERAL UTILITIES ========================
-addSectionTitle('10. Chat, PWA & ERP Utilities', MUTED);
-
 addFeatureRow(
   'Real-Time Class Chat Rooms',
   'Real-time, WebSocket-based group messaging boards for every registered classroom section.',
@@ -573,26 +594,15 @@ addFeatureRow(
   'Major'
 );
 addFeatureRow(
-  'Anti-Screenshot Secure Document Shield',
-  'Protects sensitive files inside the Document Cabinet from screenshots using instant window blur filters, print blockers, and disabled context menus.',
-  'Major'
-);
-addFeatureRow(
   'ERP System Maintenance Mode Screen',
   'Blocks non-administrative access and displays a clean status screen during ERP updates.',
   'Minor'
-);
-addFeatureRow(
-  'Initials-Based Avatar Fallback Generator',
-  'Automatically renders initials placeholders for user profiles without uploaded photos.',
-  'Simple'
 );
 addFeatureRow(
   'PWA Service Worker Offline Support',
   'Registers a service worker to cache pages, stylesheet assets, and index structures.',
   'Simple'
 );
-
 addFeatureRow(
   'Responsive Sidebar Layout',
   'A collapse-ready dashboard navigation sidebar optimized for mobile, tablet, and desktop.',
@@ -612,11 +622,11 @@ for (let i = 0; i < totalPages; i++) {
   doc.fillColor(MUTED)
      .font('Helvetica')
      .fontSize(8)
-     .text(`Campus Twin — Complete System Features Summary Report  |  Page ${i + 1} of ${totalPages}`, 50, doc.page.height - 32, { align: 'center' });
+     .text(`Campus Twin ERP  |  Universal Boarding ERP & Timetable CSP Solver  |  Page ${i + 1} of ${totalPages}`, 50, doc.page.height - 32, { align: 'center' });
 }
 
 doc.end();
 
 writeStream.on('finish', () => {
-  console.log('Expanded PDF successfully generated!');
+  console.log('Detailed PDF successfully generated!');
 });
