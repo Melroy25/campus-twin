@@ -131,7 +131,7 @@ export default function ManageSubjects() {
 
   const handleCreateSubject = async (e) => {
     e.preventDefault();
-    if (!subjectForm.courseCode || !subjectForm.courseName || !subjectForm.credits) {
+    if (!subjectForm.courseCode || !subjectForm.courseName || subjectForm.credits === '' || subjectForm.credits === null || subjectForm.credits === undefined) {
       return toast.error('Please fill all required fields');
     }
 
@@ -183,7 +183,7 @@ export default function ManageSubjects() {
 
   const handleUpdateSubject = async (e) => {
     e.preventDefault();
-    if (!editingSubject.courseName || !editingSubject.credits) {
+    if (!editingSubject.courseName || editingSubject.credits === '' || editingSubject.credits === null || editingSubject.credits === undefined) {
       return toast.error('Name and credits are required');
     }
 
@@ -583,7 +583,7 @@ export default function ManageSubjects() {
                     <input 
                       type="number" 
                       className="form-control" 
-                      min={1} 
+                      min={0} 
                       max={6}
                       value={subjectForm.credits} 
                       onChange={(e) => setSubjectForm(prev => ({ ...prev, credits: e.target.value }))}
@@ -894,7 +894,7 @@ export default function ManageSubjects() {
                 <input 
                   type="number" 
                   className="form-control" 
-                  min={1} 
+                  min={0} 
                   max={6}
                   value={editingSubject.credits} 
                   onChange={(e) => setEditingSubject(prev => ({ ...prev, credits: e.target.value }))}
