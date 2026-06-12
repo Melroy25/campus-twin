@@ -237,6 +237,7 @@ export const AuthProvider = ({ children }) => {
     // Clean up fields not suitable for Appwrite collections
     delete docData.personalEmail;
     delete docData.isHostelite;
+    delete docData.phone;
 
     if (profileData.role !== 'admin') {
       delete docData.role;
