@@ -182,6 +182,7 @@ export default function AutoGenerateTimetable() {
       // Build default teacher mappings from allocations & teacher assignments
       const teachersMapping = {};
       const roomsMapping = {};
+      const labRoomsMapping = {};
       semesterClasses.forEach(cls => {
         // Find teacher assigned to this class and subject
         const teacherMatch = teachers.find(t => {
@@ -192,7 +193,8 @@ export default function AutoGenerateTimetable() {
           );
         });
         teachersMapping[cls.id] = teacherMatch ? teacherMatch.name : '';
-        roomsMapping[cls.id] = isLabDefault ? 'Lab' : '';
+        roomsMapping[cls.id] = '';
+        labRoomsMapping[cls.id] = isLabDefault ? 'Lab' : '';
       });
 
       return {
@@ -200,12 +202,14 @@ export default function AutoGenerateTimetable() {
         courseCode: sub.courseCode,
         courseName: sub.courseName,
         courseShortName: sub.courseShortName || sub.courseName,
-        weeklyPeriods: isLabDefault ? 1 : 4, // 1 lab slot or 4 theory periods
+        weeklyPeriods: isLabDefault ? 3 : 4, // 3 theory periods default for integrated lab
         isLab: isLabDefault,
-        labDuration: isLabDefault ? 3 : 2,
+        labDuration: isLabDefault ? 2 : 2, // 2 periods lab by default
+        weeklyLabs: isLabDefault ? 1 : 0, // default 1 lab slot per week if lab
         isElective: isElectiveDefault,
         teachers: teachersMapping,
-        rooms: roomsMapping
+        rooms: roomsMapping,
+        labRooms: labRoomsMapping
       };
     });
 
@@ -239,6 +243,15 @@ export default function AutoGenerateTimetable() {
       const updated = [...prev];
       const updatedRooms = { ...updated[subIdx].rooms, [classId]: room };
       updated[subIdx] = { ...updated[subIdx], rooms: updatedRooms };
+      return updated;
+    });
+  };
+
+  const handleLabRoomMappingChange = (subIdx, classId, labRoom) => {
+    setConfiguredSubjects(prev => {
+      const updated = [...prev];
+      const updatedLabRooms = { ...updated[subIdx].labRooms, [classId]: labRoom };
+      updated[subIdx] = { ...updated[subIdx], labRooms: updatedLabRooms };
       return updated;
     });
   };
@@ -337,10 +350,17 @@ export default function AutoGenerateTimetable() {
     });
 
     const solve = () => {
-      // 1. Electives first (must align on identical day/slot for all classes)
-      const electives = configuredSubjects.filter(s => s.isElective);
-      for (const sub of electives) {
-        let periodsNeeded = sub.weeklyPeriods || 3;
+      // 1. Group electives by courseShortName to schedule them at the same time
+      const electiveSubjects = configuredSubjects.filter(s => s.isElective);
+      const electiveGroups = {};
+      electiveSubjects.forEach(s => {
+        const key = s.courseShortName;
+        if (!electiveGroups[key]) electiveGroups[key] = [];
+        electiveGroups[key].push(s);
+      });
+
+      for (const [shortName, groupSubs] of Object.entries(electiveGroups)) {
+        let periodsNeeded = Math.max(...groupSubs.map(s => s.weeklyPeriods || 3));
         const candidateSlots = [];
         
         days.forEach(day => {
@@ -351,15 +371,22 @@ export default function AutoGenerateTimetable() {
             if (!allFree) continue;
 
             // Check if teachers are free
-            const teachersFree = targetClasses.every(c => {
-              const teacher = sub.teachers[c.id];
-              return !isTeacherBusy(teacher, day, pIdx);
-            });
+            let teachersFree = true;
+            for (const sub of groupSubs) {
+              const freeForAllClasses = targetClasses.every(c => {
+                const teacher = sub.teachers[c.id];
+                return !isTeacherBusy(teacher, day, pIdx);
+              });
+              if (!freeForAllClasses) {
+                teachersFree = false;
+                break;
+              }
+            }
             if (!teachersFree) continue;
 
             // Check prompt constraints (e.g. no DMS on Monday)
             const subjectRestricted = constraintsList.some(tc => {
-              if (tc.type === 'no_subject' && tc.subject.toLowerCase() === sub.courseShortName.toLowerCase() && tc.day === day) return true;
+              if (tc.type === 'no_subject' && tc.subject.toLowerCase() === shortName.toLowerCase() && tc.day === day) return true;
               return false;
             });
             if (subjectRestricted) continue;
@@ -372,13 +399,38 @@ export default function AutoGenerateTimetable() {
 
         if (candidateSlots.length < periodsNeeded) return false;
 
+        const chosenSlots = [];
         for (let i = 0; i < periodsNeeded; i++) {
-          const { day, pIdx } = candidateSlots[i];
+          let slotIdx = candidateSlots.findIndex(slot => 
+            !chosenSlots.some(chosen => chosen.day === slot.day)
+          );
+          if (slotIdx === -1) {
+            slotIdx = 0;
+          }
+          const chosen = candidateSlots.splice(slotIdx, 1)[0];
+          chosenSlots.push(chosen);
+        }
+
+        for (let i = 0; i < periodsNeeded; i++) {
+          const { day, pIdx } = chosenSlots[i];
           targetClasses.forEach(c => {
-            const teacher = sub.teachers[c.id] || '';
-            const room = sub.rooms[c.id] || '';
-            grid[c.id][day][pIdx] = { subject: sub.courseShortName, teacher, room };
-            setTeacherBusy(teacher, day, pIdx, true);
+            const teachersList = groupSubs.map(sub => sub.teachers[c.id]).filter(Boolean);
+            const roomsList = groupSubs.map(sub => sub.rooms[c.id] || sub.labRooms?.[c.id]).filter(Boolean);
+            
+            const teacherStr = [...new Set(teachersList)].join(' / ');
+            const roomStr = [...new Set(roomsList)].join(' / ');
+
+            grid[c.id][day][pIdx] = { 
+              subject: shortName, 
+              teacher: teacherStr, 
+              room: roomStr 
+            };
+
+            // Mark all teachers of electives in this group as busy in this slot
+            groupSubs.forEach(sub => {
+              const teacher = sub.teachers[c.id];
+              setTeacherBusy(teacher, day, pIdx, true);
+            });
           });
         }
       }
@@ -394,86 +446,94 @@ export default function AutoGenerateTimetable() {
 
         for (const sub of classLabs) {
           const duration = sub.labDuration || 2;
-          let placed = false;
+          const labsCount = sub.weeklyLabs || 1;
+          
+          for (let l = 0; l < labsCount; l++) {
+            let placed = false;
 
-          // Define starting index blocks for labs avoiding lunch/tea breaks
-          const blocks = [];
-          days.forEach(day => {
-            const maxPeriods = day === 'Saturday' ? 2 : periods.length;
-            for (let i = 0; i <= maxPeriods - duration; i++) {
-              let crossesLunch = false;
-              for (let offset = 0; offset < duration - 1; offset++) {
-                const endCurrent = periods[i + offset].end;
-                const startNext = periods[i + offset + 1].start;
-                
-                const parseMin = (tStr) => {
-                  const [h, m] = tStr.split(':').map(Number);
-                  return h * 60 + m;
-                };
-                
-                if (parseMin(startNext) - parseMin(endCurrent) > 30) {
-                  crossesLunch = true;
+            // Define starting index blocks for labs avoiding lunch/tea breaks
+            const blocks = [];
+            days.forEach(day => {
+              const maxPeriods = day === 'Saturday' ? 2 : periods.length;
+              for (let i = 0; i <= maxPeriods - duration; i++) {
+                let crossesLunch = false;
+                for (let offset = 0; offset < duration - 1; offset++) {
+                  const endCurrent = periods[i + offset].end;
+                  const startNext = periods[i + offset + 1].start;
+                  
+                  const parseMin = (tStr) => {
+                    const [h, m] = tStr.split(':').map(Number);
+                    return h * 60 + m;
+                  };
+                  
+                  if (parseMin(startNext) - parseMin(endCurrent) > 30) {
+                    crossesLunch = true;
+                    break;
+                  }
+                }
+                if (!crossesLunch) {
+                  blocks.push({ day, startIdx: i });
+                }
+              }
+            });
+
+            shuffleArray(blocks);
+
+            for (const block of blocks) {
+              const { day, startIdx } = block;
+
+              // Check if slots are free for this section
+              let blockFree = true;
+              for (let offset = 0; offset < duration; offset++) {
+                if (grid[c.id][day][startIdx + offset] !== null) {
+                  blockFree = false;
                   break;
                 }
               }
-              if (!crossesLunch) {
-                blocks.push({ day, startIdx: i });
+              if (!blockFree) continue;
+
+              // Check teacher availability
+              const teacher = sub.teachers[c.id] || '';
+              let teacherFree = true;
+              for (let offset = 0; offset < duration; offset++) {
+                if (isTeacherBusy(teacher, day, startIdx + offset)) {
+                  teacherFree = false;
+                  break;
+                }
               }
-            }
-          });
+              if (!teacherFree) continue;
 
-          shuffleArray(blocks);
+              // Check prompt constraints
+              const subjectRestricted = constraintsList.some(tc => {
+                if (tc.type === 'no_subject' && tc.subject.toLowerCase() === sub.courseShortName.toLowerCase() && tc.day === day) return true;
+                return false;
+              });
+              if (subjectRestricted) continue;
 
-          for (const block of blocks) {
-            const { day, startIdx } = block;
-
-            // Check if slots are free for this section
-            let blockFree = true;
-            for (let offset = 0; offset < duration; offset++) {
-              if (grid[c.id][day][startIdx + offset] !== null) {
-                blockFree = false;
-                break;
+              // Place lab slots
+              for (let offset = 0; offset < duration; offset++) {
+                const labRoom = sub.labRooms?.[c.id] || 'Lab';
+                const subjectLabel = sub.courseShortName.toLowerCase().includes('lab')
+                  ? sub.courseShortName
+                  : `${sub.courseShortName} Lab`;
+                grid[c.id][day][startIdx + offset] = { subject: subjectLabel, teacher, room: labRoom };
+                setTeacherBusy(teacher, day, startIdx + offset, true);
               }
+              placed = true;
+              break;
             }
-            if (!blockFree) continue;
 
-            // Check teacher availability
-            const teacher = sub.teachers[c.id] || '';
-            let teacherFree = true;
-            for (let offset = 0; offset < duration; offset++) {
-              if (isTeacherBusy(teacher, day, startIdx + offset)) {
-                teacherFree = false;
-                break;
-              }
-            }
-            if (!teacherFree) continue;
-
-            // Check prompt constraints
-            const subjectRestricted = constraintsList.some(tc => {
-              if (tc.type === 'no_subject' && tc.subject.toLowerCase() === sub.courseShortName.toLowerCase() && tc.day === day) return true;
-              return false;
-            });
-            if (subjectRestricted) continue;
-
-            // Place lab slots
-            for (let offset = 0; offset < duration; offset++) {
-              grid[c.id][day][startIdx + offset] = { subject: sub.courseShortName, teacher, room: sub.rooms[c.id] || '' };
-              setTeacherBusy(teacher, day, startIdx + offset, true);
-            }
-            placed = true;
-            break;
+            if (!placed) return false;
           }
-
-          if (!placed) return false;
         }
       }
 
       // 3. Regular Theory subjects
-      const theory = configuredSubjects.filter(s => !s.isLab && !s.isElective);
+      const theory = configuredSubjects.filter(s => s.weeklyPeriods > 0 && !s.isElective);
       for (const c of targetClasses) {
         const slotsToFill = [];
         theory.forEach(sub => {
-          const periodsNeeded = sub.weeklyPeriods || 4;
+          const periodsNeeded = sub.weeklyPeriods || 0;
           for (let i = 0; i < periodsNeeded; i++) {
             slotsToFill.push(sub);
           }
@@ -498,7 +558,28 @@ export default function AutoGenerateTimetable() {
           // keeps later periods free at the end of the day
           freeSlots.sort((a, b) => a.pIdx - b.pIdx);
 
-          for (const slot of freeSlots) {
+          // Split free slots into preferred (subject not scheduled on that day yet) and fallback
+          const preferredSlots = [];
+          const fallbackSlots = [];
+
+          freeSlots.forEach(slot => {
+            const { day } = slot;
+            const alreadyScheduledOnDay = grid[c.id][day].some(cell => 
+              cell !== null && 
+              (cell.subject === sub.courseShortName || 
+               cell.subject === `${sub.courseShortName} Lab` || 
+               cell.subject.startsWith(sub.courseShortName))
+            );
+            if (alreadyScheduledOnDay) {
+              fallbackSlots.push(slot);
+            } else {
+              preferredSlots.push(slot);
+            }
+          });
+
+          const orderedSlots = [...preferredSlots, ...fallbackSlots];
+
+          for (const slot of orderedSlots) {
             const { day, pIdx } = slot;
             const teacher = sub.teachers[c.id] || '';
             if (isTeacherBusy(teacher, day, pIdx)) continue;
@@ -946,38 +1027,62 @@ export default function AutoGenerateTimetable() {
                               type="number"
                               className="form-control"
                               style={{ width: 70 }}
-                              min={1}
+                              min={0}
                               max={10}
                               value={sub.weeklyPeriods}
-                              onChange={(e) => handleSubjectConfigChange(sIdx, 'weeklyPeriods', parseInt(e.target.value) || 1)}
-                              disabled={sub.isLab} // Labs are locked to 1 slot
+                              onChange={(e) => handleSubjectConfigChange(sIdx, 'weeklyPeriods', parseInt(e.target.value) || 0)}
                             />
                           </td>
                           <td>
-                            <input 
-                              type="checkbox"
-                              checked={sub.isLab}
-                              onChange={(e) => {
-                                handleSubjectConfigChange(sIdx, 'isLab', e.target.checked);
-                                if (e.target.checked) {
-                                  handleSubjectConfigChange(sIdx, 'weeklyPeriods', 1);
-                                } else {
-                                  handleSubjectConfigChange(sIdx, 'weeklyPeriods', 4);
-                                }
-                              }}
-                              style={{ width: 18, height: 18 }}
-                            />
-                            {sub.isLab && (
-                              <select 
-                                className="form-control mt-16"
-                                style={{ width: 80, padding: 2, fontSize: '0.7rem' }}
-                                value={sub.labDuration}
-                                onChange={(e) => handleSubjectConfigChange(sIdx, 'labDuration', parseInt(e.target.value))}
-                              >
-                                <option value={2}>2 periods</option>
-                                <option value={3}>3 periods</option>
-                              </select>
-                            )}
+                            <div className="flex-col gap-4">
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                                <input 
+                                  type="checkbox"
+                                  checked={sub.isLab}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    handleSubjectConfigChange(sIdx, 'isLab', checked);
+                                    handleSubjectConfigChange(sIdx, 'weeklyLabs', checked ? 1 : 0);
+                                    if (checked) {
+                                      const updatedLabRooms = { ...sub.labRooms };
+                                      targetClasses.forEach(cls => {
+                                        if (!updatedLabRooms[cls.id]) {
+                                          updatedLabRooms[cls.id] = 'Lab';
+                                        }
+                                      });
+                                      handleSubjectConfigChange(sIdx, 'labRooms', updatedLabRooms);
+                                    }
+                                  }}
+                                  style={{ width: 18, height: 18 }}
+                                />
+                                <span style={{ fontSize: '0.8rem' }}>Yes</span>
+                              </label>
+                              {sub.isLab && (
+                                <div className="flex-col gap-4 mt-8" style={{ borderLeft: '2px solid var(--primary-light)', paddingLeft: 6 }}>
+                                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Duration:</div>
+                                  <select 
+                                    className="form-control"
+                                    style={{ width: 85, padding: 2, fontSize: '0.7rem' }}
+                                    value={sub.labDuration}
+                                    onChange={(e) => handleSubjectConfigChange(sIdx, 'labDuration', parseInt(e.target.value))}
+                                  >
+                                    <option value={2}>2 periods</option>
+                                    <option value={3}>3 periods</option>
+                                    <option value={4}>4 periods</option>
+                                  </select>
+                                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 4 }}>Labs/wk:</div>
+                                  <input 
+                                    type="number"
+                                    className="form-control"
+                                    style={{ width: 85, padding: 2, fontSize: '0.7rem' }}
+                                    min={1}
+                                    max={5}
+                                    value={sub.weeklyLabs || 1}
+                                    onChange={(e) => handleSubjectConfigChange(sIdx, 'weeklyLabs', parseInt(e.target.value) || 1)}
+                                  />
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td>
                             <input 
@@ -1002,10 +1107,19 @@ export default function AutoGenerateTimetable() {
                                 <input 
                                   className="form-control"
                                   style={{ padding: 4, fontSize: '0.78rem' }}
-                                  placeholder="Room"
+                                  placeholder="Theory Room"
                                   value={sub.rooms[cls.id] || ''}
                                   onChange={(e) => handleRoomMappingChange(sIdx, cls.id, e.target.value)}
                                 />
+                                {sub.isLab && (
+                                  <input 
+                                    className="form-control"
+                                    style={{ padding: 4, fontSize: '0.78rem' }}
+                                    placeholder="Lab Room"
+                                    value={sub.labRooms?.[cls.id] || ''}
+                                    onChange={(e) => handleLabRoomMappingChange(sIdx, cls.id, e.target.value)}
+                                  />
+                                )}
                               </div>
                             </td>
                           ))}
@@ -1139,10 +1253,10 @@ export default function AutoGenerateTimetable() {
                   style={{ gridTemplateColumns: `100px repeat(${slots.length}, minmax(100px, 1fr))` }}
                 >
                   {/* Header Row */}
-                  <div className="tt-corner">Day / Time</div>
+                  <div className="tt-corner" style={{ fontSize: '0.9rem', fontWeight: 700 }}>Day / Time</div>
                   {slots.map((slot, sIdx) => (
                     <div key={sIdx} className="tt-header">
-                      <div className="tt-header-time" style={{ fontSize: '0.78rem', fontWeight: 600 }}>
+                      <div className="tt-header-time" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
                         {formatTime(slot.start)} - {formatTime(slot.end)}
                       </div>
                     </div>
@@ -1153,7 +1267,7 @@ export default function AutoGenerateTimetable() {
                     const slotsCount = day === 'Saturday' ? 2 : slots.length;
                     return (
                       <React.Fragment key={day}>
-                        <div className="tt-day-label" style={{ background: 'var(--surface-2)', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 0', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
+                        <div className="tt-day-label" style={{ background: 'var(--surface-2)', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 0', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)', fontSize: '0.95rem' }}>
                           {day.slice(0, 3)}
                         </div>
                         {slots.map((slot, sIdx) => {
@@ -1176,7 +1290,7 @@ export default function AutoGenerateTimetable() {
                               onDoubleClick={() => handleCellDoubleClick(day, sIdx)}
                               style={{ 
                                 cursor: 'pointer',
-                                height: 80, 
+                                height: 100, 
                                 padding: 4, 
                                 borderRight: '1px solid var(--border)', 
                                 borderBottom: '1px solid var(--border)',
@@ -1189,12 +1303,12 @@ export default function AutoGenerateTimetable() {
                                   data-color={hashColor(cell.subject)}
                                   style={{ height: '100%', padding: 6, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
                                 >
-                                  <span className="tt-entry-subject" style={{ fontWeight: 700, fontSize: '0.86rem' }}>{cell.subject}</span>
-                                  {cell.teacher && <span className="tt-entry-teacher" style={{ fontSize: '0.72rem', opacity: 0.8 }}>{cell.teacher}</span>}
-                                  {cell.room && <span className="tt-entry-room" style={{ fontSize: '0.72rem', fontWeight: 500 }}>📍 {cell.room}</span>}
+                                  <span className="tt-entry-subject" style={{ fontWeight: 700, fontSize: '1.05rem' }}>{cell.subject}</span>
+                                  {cell.teacher && <span className="tt-entry-teacher" style={{ fontSize: '0.85rem', opacity: 0.8 }}>{cell.teacher}</span>}
+                                  {cell.room && <span className="tt-entry-room" style={{ fontSize: '0.85rem', fontWeight: 500 }}>📍 {cell.room}</span>}
                                 </div>
                               ) : (
-                                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.74rem', fontStyle: 'italic' }}>
+                                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.88rem', fontStyle: 'italic' }}>
                                   Free
                                 </div>
                               )}
