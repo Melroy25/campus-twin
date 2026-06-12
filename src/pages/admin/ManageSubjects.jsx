@@ -46,6 +46,9 @@ export default function ManageSubjects() {
   });
 
   const [editingSubject, setEditingSubject] = useState(null);
+  const [editingAllocation, setEditingAllocation] = useState(null);
+  const [editAllocationTeachers, setEditAllocationTeachers] = useState([]);
+  const [editTeacherSearch, setEditTeacherSearch] = useState('');
 
   // Fetch branches, classes, and subjects
   const loadData = async () => {
@@ -424,6 +427,67 @@ export default function ManageSubjects() {
       toast.error('Failed to delete allocation');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openEditAllocation = (alloc) => {
+    setEditingAllocation(alloc);
+    const subDoc = subjects.find(s => s.id === alloc.subject_id || s.$id === alloc.subject_id);
+    if (!subDoc) return;
+    const currentAssigned = teachers.filter(t => {
+      const assignments = t.class_assignments || [];
+      return assignments.some(a => 
+        a.class_id === alloc.class_id && 
+        a.subject && a.subject.trim().toLowerCase() === subDoc.courseName.trim().toLowerCase()
+      );
+    }).map(t => t.id || t.uid || t.$id);
+    setEditAllocationTeachers(currentAssigned);
+    setEditTeacherSearch('');
+  };
+
+  const handleUpdateAllocationTeachers = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const subDoc = subjects.find(s => s.id === editingAllocation.subject_id || s.$id === editingAllocation.subject_id);
+      if (!subDoc) throw new Error('Subject not found');
+
+      const classId = editingAllocation.class_id;
+
+      // Sync teachers' assignments
+      for (const teacher of teachers) {
+        const isAssigned = editAllocationTeachers.includes(teacher.id || teacher.uid || teacher.$id);
+        let assignments = teacher.class_assignments || [];
+        const hasAssignment = assignments.some(a => 
+          a.class_id === classId && 
+          a.subject && a.subject.trim().toLowerCase() === subDoc.courseName.trim().toLowerCase()
+        );
+
+        if (isAssigned && !hasAssignment) {
+          // Add assignment
+          const updated = [...assignments, { class_id: classId, subject: subDoc.courseName }];
+          await updateDocument('teachers', teacher.id || teacher.$id, {
+            class_assignments: JSON.stringify(updated)
+          });
+        } else if (!isAssigned && hasAssignment) {
+          // Remove assignment
+          const updated = assignments.filter(a => !(
+            a.class_id === classId &&
+            a.subject && a.subject.trim().toLowerCase() === subDoc.courseName.trim().toLowerCase()
+          ));
+          await updateDocument('teachers', teacher.id || teacher.$id, {
+            class_assignments: JSON.stringify(updated)
+          });
+        }
+      }
+
+      toast.success('Assigned teachers updated successfully!');
+      setEditingAllocation(null);
+      loadData();
+    } catch (err) {
+      toast.error('Failed to update teachers: ' + err.message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -844,7 +908,10 @@ export default function ManageSubjects() {
                             </span>
                           </td>
                           <td>
-                            <button className="btn btn-sm btn-danger" onClick={() => handleDeleteAllocation(a)}><MdDelete /></button>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button className="btn btn-sm btn-ghost" onClick={() => openEditAllocation(a)} title="Edit Assigned Teachers"><MdEdit /></button>
+                              <button className="btn btn-sm btn-danger" onClick={() => handleDeleteAllocation(a)} title="Delete Allocation"><MdDelete /></button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -916,6 +983,72 @@ export default function ManageSubjects() {
               <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
                 <button type="button" className="btn btn-ghost flex-1" onClick={() => setEditingSubject(null)}>Cancel</button>
                 <button type="submit" className="btn btn-primary flex-1" disabled={saving}><MdSave /> Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Allocation Modal */}
+      {editingAllocation && (
+        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+          <div className="card" style={{ width: '100%', maxWidth: 450, animation: 'slideUp 0.3s ease-out' }}>
+            <div className="flex-between mb-20">
+              <h3><MdEdit /> Edit Assigned Teachers</h3>
+              <button className="btn btn-ghost" onClick={() => setEditingAllocation(null)}><MdClose /></button>
+            </div>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 16 }}>
+              Subject: <strong>{getSubjectDetails(editingAllocation.subject_id)}</strong><br />
+              Class Section: <strong>{getClassLabel(editingAllocation.class_id)}</strong>
+            </p>
+            <form onSubmit={handleUpdateAllocationTeachers}>
+              <div className="form-group">
+                <label className="form-label">Search Teachers</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  placeholder="Filter by name..." 
+                  value={editTeacherSearch}
+                  onChange={(e) => setEditTeacherSearch(e.target.value)}
+                  style={{ marginBottom: 12 }}
+                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '8px 12px', background: 'var(--surface)' }}>
+                  {teachers.length === 0 ? (
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>No teachers found.</span>
+                  ) : (() => {
+                    const filtered = teachers.filter(t => 
+                      editTeacherSearch.trim() === '' || t.name.toLowerCase().includes(editTeacherSearch.toLowerCase())
+                    );
+                    return filtered.length === 0 ? (
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>No teachers match "{editTeacherSearch}"</span>
+                    ) : (
+                      filtered.map(t => {
+                        const id = t.id || t.uid || t.$id;
+                        return (
+                          <label key={id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.88rem', margin: 0, padding: '2px 0', color: 'var(--text-primary)' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={editAllocationTeachers.includes(id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setEditAllocationTeachers(prev => [...prev, id]);
+                                } else {
+                                  setEditAllocationTeachers(prev => prev.filter(x => x !== id));
+                                }
+                              }}
+                            />
+                            <span>{t.name}</span>
+                            {t.department && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>[{t.department}]</span>}
+                          </label>
+                        );
+                      })
+                    );
+                  })()}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+                <button type="button" className="btn btn-ghost flex-1" onClick={() => setEditingAllocation(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary flex-1" disabled={saving}><MdSave /> Save Changes</button>
               </div>
             </form>
           </div>
