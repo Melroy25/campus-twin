@@ -72,9 +72,10 @@ export default function ClassChat() {
           const classAssignments = userProfile.class_assignments || [];
           filtered = activeChats.filter(c => {
             const isAdvisor = c.advisor_id === uid;
+            const isMentor = c.mentor_id === uid;
             const additionalList = c.chat_additional_members || [];
             const isInvited = additionalList.includes(uid);
-            return isAdvisor || isInvited;
+            return isAdvisor || isMentor || isInvited;
           });
         } else {
           // Student: access ONLY if they are invited

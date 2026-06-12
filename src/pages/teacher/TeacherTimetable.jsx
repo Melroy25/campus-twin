@@ -48,6 +48,8 @@ export default function TeacherTimetable() {
         // Keep the FULL timetable list so that we can show the entire class timetable, not just teacher's slots
         setAllEntries(allTT);
 
+        const teacherUid = userProfile?.uid || userProfile?.id || currentUser?.uid;
+
         // Gather all assigned class IDs for this teacher:
         const assignedClassIds = new Set();
         
@@ -69,13 +71,23 @@ export default function TeacherTimetable() {
           }
         });
 
-        const classIds = [...assignedClassIds];
+        // 3. Fetch all classes and supplement with classes where the teacher is the Advisor or Mentor
         const allClasses = await getAll('classes');
-        const teacherClasses = allClasses.filter(c => classIds.includes(c.id));
+        if (teacherUid) {
+          allClasses.forEach(c => {
+            const cid = c.id || c.class_id;
+            if (c.advisor_id === teacherUid || c.mentor_id === teacherUid) {
+              assignedClassIds.add(cid);
+            }
+          });
+        }
+
+        const classIds = [...assignedClassIds];
+        const teacherClasses = allClasses.filter(c => classIds.includes(c.id) || classIds.includes(c.class_id));
         setClasses(teacherClasses);
 
         if (teacherClasses.length > 0 && !classId) {
-          setClassId(teacherClasses[0].id);
+          setClassId(teacherClasses[0].id || teacherClasses[0].class_id);
         }
       } catch (err) {
         console.error(err);
@@ -85,7 +97,7 @@ export default function TeacherTimetable() {
       }
     };
     if (teacherName) loadData();
-  }, [teacherName, userProfile?.class_assignments]);
+  }, [teacherName, userProfile?.class_assignments, userProfile?.uid, currentUser?.uid]);
 
   useEffect(() => {
     if (classId) {

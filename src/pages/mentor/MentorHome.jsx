@@ -24,11 +24,20 @@ export default function MentorHome() {
       // 1. Fetch students who have this mentor assigned directly
       const directStudents = await queryDocuments('students', [where('mentor_id', '==', currentUser.uid)]);
 
-      // 2. Fetch classes where this teacher is the mentor
-      const mentoredClasses = await queryDocuments('classes', [where('mentor_id', '==', currentUser.uid)]);
+      // 2. Fetch classes where this teacher is the mentor or advisor
+      const [mentoredClasses, advisedClasses] = await Promise.all([
+        queryDocuments('classes', [where('mentor_id', '==', currentUser.uid)]),
+        queryDocuments('classes', [where('advisor_id', '==', currentUser.uid)])
+      ]);
+
+      // Merge unique classes
+      const classMap = new Map();
+      mentoredClasses.forEach(c => classMap.set(c.id || c.$id, c));
+      advisedClasses.forEach(c => classMap.set(c.id || c.$id, c));
+      const myClasses = Array.from(classMap.values());
 
       // 3. Fetch students belonging to those classes
-      const classStudentsPromises = mentoredClasses.map(cls => getStudentsByClass(cls.id));
+      const classStudentsPromises = myClasses.map(cls => getStudentsByClass(cls.id));
       const classStudentsResults = await Promise.all(classStudentsPromises);
       const classStudents = classStudentsResults.flat();
 
@@ -43,7 +52,7 @@ export default function MentorHome() {
       // Load mentor's classes from multiple sources:
       // 1. Classes assigned to the mentor in class_assignments
       // 2. Classes of the mentor's mentees
-      // 3. Classes where mentor_id matches currentUser.uid
+      // 3. Classes where mentor_id/advisor_id matches currentUser.uid
       let mentorClasses = [];
       try {
         const allClasses = await getClasses();
@@ -51,7 +60,7 @@ export default function MentorHome() {
           ...(userProfile?.class_assignments || []).map(a => a.class_id).filter(Boolean),
           ...students.map(s => s.class_id).filter(Boolean)
         ]);
-        mentorClasses = allClasses.filter(c => assignedClassIds.has(c.id) || c.mentor_id === currentUser.uid);
+        mentorClasses = allClasses.filter(c => assignedClassIds.has(c.id) || c.mentor_id === currentUser.uid || c.advisor_id === currentUser.uid);
       } catch (err) {
         console.error("Failed to load classes via getClasses, falling back to getById:", err);
         const assignedClassIds = (userProfile?.class_assignments || []).map((a) => a.class_id).filter(Boolean);

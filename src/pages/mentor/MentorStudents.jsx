@@ -23,11 +23,20 @@ export default function MentorStudents() {
       // 1. Fetch students who have this mentor assigned directly
       const directStudents = await queryDocuments('students', [where('mentor_id', '==', currentUser.uid)]);
 
-      // 2. Fetch classes where this teacher is the mentor
-      const mentoredClasses = await queryDocuments('classes', [where('mentor_id', '==', currentUser.uid)]);
+      // 2. Fetch classes where this teacher is the mentor or advisor
+      const [mentoredClasses, advisedClasses] = await Promise.all([
+        queryDocuments('classes', [where('mentor_id', '==', currentUser.uid)]),
+        queryDocuments('classes', [where('advisor_id', '==', currentUser.uid)])
+      ]);
+
+      // Merge unique classes
+      const classMap = new Map();
+      mentoredClasses.forEach(c => classMap.set(c.id || c.$id, c));
+      advisedClasses.forEach(c => classMap.set(c.id || c.$id, c));
+      const myClasses = Array.from(classMap.values());
 
       // 3. Fetch students belonging to those classes
-      const classStudentsPromises = mentoredClasses.map(cls => getStudentsByClass(cls.id));
+      const classStudentsPromises = myClasses.map(cls => getStudentsByClass(cls.id));
       const classStudentsResults = await Promise.all(classStudentsPromises);
       const classStudents = classStudentsResults.flat();
 
