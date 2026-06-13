@@ -47,22 +47,104 @@ export default function UserDocuments() {
   const [docName, setDocName] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState(null);
+  const [revealed, setRevealed] = useState(false);
 
   // Anti-Screenshot & Blur Overlay
   useEffect(() => {
     const handleBlur = () => {
+      // Synchronously blur and hide the media first to beat OS screen capture
+      const mediaEl = document.getElementById('secure-preview-media');
+      if (mediaEl) {
+        mediaEl.style.setProperty('filter', 'blur(60px)', 'important');
+        mediaEl.style.setProperty('opacity', '0', 'important');
+      }
+      setRevealed(false); // Instantly reset reveal state on focus loss
       document.body.classList.add('cabinet-secure-lock');
     };
     const handleFocus = () => {
       document.body.classList.remove('cabinet-secure-lock');
     };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        const mediaEl = document.getElementById('secure-preview-media');
+        if (mediaEl) {
+          mediaEl.style.setProperty('filter', 'blur(60px)', 'important');
+          mediaEl.style.setProperty('opacity', '0', 'important');
+        }
+        setRevealed(false);
+        document.body.classList.add('cabinet-secure-lock');
+      }
+    };
+    const handleMouseLeaveWindow = (e) => {
+      // If mouse leaves the browser window entirely
+      if (!e.relatedTarget || e.toElement === null) {
+        const mediaEl = document.getElementById('secure-preview-media');
+        if (mediaEl) {
+          mediaEl.style.setProperty('filter', 'blur(60px)', 'important');
+          mediaEl.style.setProperty('opacity', '0', 'important');
+        }
+        setRevealed(false);
+        document.body.classList.add('cabinet-secure-lock');
+      }
+    };
+
     window.addEventListener('blur', handleBlur);
     window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('mouseleave', handleMouseLeaveWindow);
 
     return () => {
       window.removeEventListener('blur', handleBlur);
       window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('mouseleave', handleMouseLeaveWindow);
       document.body.classList.remove('cabinet-secure-lock');
+    };
+  }, []);
+
+  // Intercept screenshot keyboard shortcuts and modifier keys
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const isPrintScreen = e.key === 'PrintScreen' || e.keyCode === 44;
+      const isWinSnipping = (e.metaKey || e.winKey) && e.shiftKey && e.key.toLowerCase() === 's';
+      const isMacSnipping = e.metaKey && e.shiftKey && ['3', '4', '5'].includes(e.key);
+      
+      // If the user presses Meta (Windows/Cmd), Alt, Control, Shift, or PrintScreen,
+      // we immediately blur the document to prevent OS screenshot capture of clear text.
+      const isModifierOrScreenshotKey = 
+        e.key === 'Meta' || 
+        e.key === 'OS' || 
+        e.key === 'Alt' || 
+        e.key === 'Control' || 
+        e.key === 'Shift' || 
+        isPrintScreen ||
+        isWinSnipping ||
+        isMacSnipping ||
+        e.metaKey ||
+        e.altKey ||
+        e.ctrlKey ||
+        e.shiftKey;
+
+      if (isModifierOrScreenshotKey) {
+        // Synchronously blur and hide the media first to beat OS screen capture
+        const mediaEl = document.getElementById('secure-preview-media');
+        if (mediaEl) {
+          mediaEl.style.setProperty('filter', 'blur(60px)', 'important');
+          mediaEl.style.setProperty('opacity', '0', 'important');
+        }
+        setRevealed(false); // Instantly blur preview content
+        document.body.classList.add('cabinet-secure-lock');
+        
+        try {
+          navigator.clipboard.writeText('');
+        } catch (err) {}
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true); // Use capture phase
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
     };
   }, []);
 
@@ -865,15 +947,14 @@ export default function UserDocuments() {
 
                                         <div style={{ display: 'flex', gap: 8, marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
                                           {!doc.isCorrupt && (
-                                            <a 
-                                              href={doc.url} 
-                                              target="_blank" 
-                                              rel="noopener noreferrer"
+                                            <button 
+                                              type="button"
+                                              onClick={() => setPreviewDoc(doc)}
                                               className="btn btn-outline btn-sm"
                                               style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '4px 8px', fontSize: '0.75rem' }}
                                             >
                                               <MdVisibility size={14} /> Open
-                                            </a>
+                                            </button>
                                           )}
                                           <button
                                             type="button"
@@ -901,6 +982,138 @@ export default function UserDocuments() {
           </>
         )}
       </div>
+
+      {/* Secure Inline Document Preview Modal */}
+      {previewDoc && (
+        <div 
+          onMouseLeave={() => {
+            // Instantly blur when mouse leaves the browser window/modal area
+            const mediaEl = document.getElementById('secure-preview-media');
+            if (mediaEl) {
+              mediaEl.style.setProperty('filter', 'blur(60px)', 'important');
+              mediaEl.style.setProperty('opacity', '0', 'important');
+            }
+            setRevealed(false);
+          }}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(15, 23, 42, 0.95)', zIndex: 10000,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            padding: 24, userSelect: 'none'
+          }}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          {/* Diagonal Watermarks */}
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+            pointerEvents: 'none', overflow: 'hidden', zIndex: 5,
+            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+            gridTemplateRows: 'repeat(4, 1fr)', gap: '40px',
+            opacity: 0.1, transform: 'rotate(-25deg) scale(1.2)'
+          }}>
+            {Array.from({ length: 12 }).map((_, idx) => (
+              <div 
+                key={idx} 
+                style={{
+                  fontSize: '0.8rem', color: '#fff', fontWeight: 700,
+                  whiteSpace: 'nowrap', textTransform: 'uppercase',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}
+              >
+                {`CONFIDENTIAL • ${userProfile?.name || 'STUDENT'} (${userProfile?.usn || 'USN'}) • ${new Date().toLocaleDateString()}`}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ position: 'absolute', top: 20, right: 20, zIndex: 10, display: 'flex', gap: 12 }}>
+            {!previewDoc.isCorrupt && (
+              <a 
+                href={previewDoc.url} 
+                download={previewDoc.name}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn"
+                style={{ 
+                  background: 'linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%)', 
+                  color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 8, 
+                  textDecoration: 'none', display: 'inline-flex', alignItems: 'center',
+                  fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem'
+                }}
+              >
+                Download File
+              </a>
+            )}
+            <button 
+              type="button"
+              className="btn btn-outline" 
+              onClick={() => {
+                setPreviewDoc(null);
+                setRevealed(false); // Reset reveal on close
+              }}
+              style={{ background: 'rgba(255, 255, 255, 0.15)', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: '0.85rem' }}
+            >
+              Close Preview
+            </button>
+          </div>
+          
+          <div style={{
+            maxWidth: '90%', maxHeight: '75vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: '#000', borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)',
+            position: 'relative', padding: 10
+          }}>
+            {previewDoc.url && (previewDoc.url.toLowerCase().includes('.pdf') || previewDoc.name.toLowerCase().includes('.pdf')) ? (
+              <iframe 
+                id="secure-preview-media"
+                src={previewDoc.url} 
+                style={{ 
+                  width: '80vw', height: '65vh', border: 'none', background: 'white',
+                  filter: revealed ? 'none' : 'blur(40px)', transition: 'filter 0.15s ease'
+                }}
+                title="PDF Preview"
+              />
+            ) : (
+              <img 
+                id="secure-preview-media"
+                src={previewDoc.url} 
+                alt={previewDoc.name} 
+                style={{ 
+                  maxWidth: '100%', maxHeight: '65vh', objectFit: 'contain', pointerEvents: 'none',
+                  filter: revealed ? 'none' : 'blur(40px)', transition: 'filter 0.15s ease'
+                }} 
+                onContextMenu={(e) => e.preventDefault()}
+              />
+            )}
+          </div>
+          
+          {/* Reveal Toggle Button */}
+          <button
+            type="button"
+            onClick={() => {
+              const nextState = !revealed;
+              setRevealed(nextState);
+              // Clear any direct DOM style overrides
+              const mediaEl = document.getElementById('secure-preview-media');
+              if (mediaEl) {
+                mediaEl.style.filter = '';
+                mediaEl.style.opacity = '';
+              }
+            }}
+            style={{
+              background: revealed ? 'var(--primary)' : 'rgba(255, 255, 255, 0.15)',
+              color: '#fff', padding: '12px 24px', borderRadius: 8, border: 'none',
+              marginTop: 18, fontWeight: 600, cursor: 'pointer', zIndex: 10,
+              userSelect: 'none', WebkitUserSelect: 'none'
+            }}
+          >
+            {revealed ? 'Click to Blur Document' : 'Click to Reveal Document'}
+          </button>
+          
+          <div style={{ color: '#fff', marginTop: 12, textAlign: 'center', zIndex: 10 }}>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 600, marginBottom: 4 }}>{previewDoc.name}</h3>
+            <p style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Secure Cabinet Inline Viewer (Anti-Screenshot active)</p>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

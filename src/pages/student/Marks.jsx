@@ -24,7 +24,11 @@ export default function StudentMarks() {
       getMarksByStudent(currentUser.uid),
       getAll('subjects')
     ]).then(([marksData, subjectsData]) => {
-      setMarks(marksData);
+      // Filter out marks for subjects that do not exist in the subjects list
+      const validMarks = marksData.filter(m => 
+        subjectsData.some(s => s.courseName.trim().toLowerCase() === m.subject.trim().toLowerCase())
+      );
+      setMarks(validMarks);
       setSubjects(subjectsData);
       setLoading(false);
     });

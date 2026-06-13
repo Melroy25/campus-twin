@@ -31,6 +31,106 @@ export default function ChatbotWidget() {
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  // Dragging states
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+  const wasDragged = useRef(false);
+
+  const handleMouseDown = (e) => {
+    const isToggleButton = e.target.closest('.cb-toggle-btn');
+    const isHeader = e.target.closest('.cb-header');
+    const isHeaderButton = e.target.closest('.cb-header-actions') || e.target.closest('.cb-close-btn') || e.target.closest('.cb-tab-btn');
+    
+    if ((isToggleButton || isHeader) && !isHeaderButton) {
+      setIsDragging(true);
+      wasDragged.current = false;
+      dragStart.current = {
+        x: e.clientX - position.x,
+        y: e.clientY - position.y
+      };
+      e.preventDefault();
+    }
+  };
+
+  const handleTouchStart = (e) => {
+    const isToggleButton = e.target.closest('.cb-toggle-btn');
+    const isHeader = e.target.closest('.cb-header');
+    const isHeaderButton = e.target.closest('.cb-header-actions') || e.target.closest('.cb-close-btn') || e.target.closest('.cb-tab-btn');
+    
+    if ((isToggleButton || isHeader) && !isHeaderButton) {
+      setIsDragging(true);
+      wasDragged.current = false;
+      const touch = e.touches[0];
+      dragStart.current = {
+        x: touch.clientX - position.x,
+        y: touch.clientY - position.y
+      };
+    }
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDragging) return;
+      
+      const newX = e.clientX - dragStart.current.x;
+      const newY = e.clientY - dragStart.current.y;
+      
+      const diffX = newX - position.x;
+      const diffY = newY - position.y;
+      if (Math.abs(diffX) > 5 || Math.abs(diffY) > 5) {
+        wasDragged.current = true;
+      }
+      
+      setPosition({ x: newX, y: newY });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, position]);
+
+  useEffect(() => {
+    const handleTouchMove = (e) => {
+      if (!isDragging) return;
+      const touch = e.touches[0];
+      const newX = touch.clientX - dragStart.current.x;
+      const newY = touch.clientY - dragStart.current.y;
+      
+      const diffX = newX - position.x;
+      const diffY = newY - position.y;
+      if (Math.abs(diffX) > 5 || Math.abs(diffY) > 5) {
+        wasDragged.current = true;
+      }
+      
+      setPosition({ x: newX, y: newY });
+    };
+
+    const handleTouchEnd = () => {
+      setIsDragging(false);
+    };
+
+    if (isDragging) {
+      window.addEventListener('touchmove', handleTouchMove, { passive: false });
+      window.addEventListener('touchend', handleTouchEnd);
+    }
+
+    return () => {
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isDragging, position]);
+
   // Global env key (set once in .env, works for all users)
   const globalKey = import.meta.env.VITE_GEMINI_API_KEY || '';
   const runMode = globalKey ? 'ai' : 'demo';
@@ -727,7 +827,16 @@ I will read the text, extract dates, times, venues, and summary, and let you add
   };
 
   return (
-    <div className="cb-wrapper">
+    <div 
+      className="cb-wrapper"
+      style={{
+        transform: `translate(${position.x}px, ${position.y}px)`,
+        cursor: isDragging ? 'grabbing' : 'auto',
+        touchAction: 'none'
+      }}
+      onMouseDown={handleMouseDown}
+      onTouchStart={handleTouchStart}
+    >
       {/* Collapsed Toggle Button & Speech Bubble */}
       {!isOpen && (
         <div className="cb-collapsed-container">
@@ -739,7 +848,18 @@ I will read the text, extract dates, times, venues, and summary, and let you add
               </button>
             </div>
           )}
-          <button className="cb-toggle-btn" onClick={() => setIsOpen(true)}>
+          <button 
+            className="cb-toggle-btn" 
+            onClick={(e) => {
+              if (wasDragged.current) {
+                e.preventDefault();
+                e.stopPropagation();
+                wasDragged.current = false;
+                return;
+              }
+              setIsOpen(true);
+            }}
+          >
             <div className="cb-toggle-icon">
               <MdOutlineSmartToy />
             </div>

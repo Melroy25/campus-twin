@@ -147,7 +147,7 @@ export const generateRegistrationPDF = async ({
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(107, 114, 128); // Gray-500 (#6b7280)
-  doc.text('DIGITAL CAMPUS MANAGEMENT PLATFORM • OFFICIAL RECEIPT', margin + 6, margin + 17);
+  doc.text('DIGITAL CAMPUS MANAGEMENT PLATFORM | OFFICIAL RECEIPT', margin + 6, margin + 17);
 
   // 4. Receipt Header Label (Badge)
   doc.setFillColor(79, 70, 229); // Royal Indigo (#4f46e5)
@@ -250,7 +250,7 @@ export const generateRegistrationPDF = async ({
   doc.setTextColor(6, 95, 70); // Success dark green (#065f46)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.text('✓ STATUS: VERIFIED', rightColumnX + 4, textStartY + 21);
+  doc.text('STATUS: VERIFIED', rightColumnX + 6, textStartY + 21);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.text('LOCKED & OFFICIAL', rightColumnX + 11, textStartY + 25);
