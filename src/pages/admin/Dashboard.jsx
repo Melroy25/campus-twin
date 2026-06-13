@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
 import { getAll, listenComplaints } from '../../appwrite/database';
 import { useAuth } from '../../context/AuthContext';
-import { MdGroup, MdSchedule, MdEvent, MdCheckCircle, MdInbox, MdSchool, MdSettings, MdAnalytics, MdCalendarToday } from 'react-icons/md';
+import { MdGroup, MdSchedule, MdEvent, MdCheckCircle, MdInbox, MdSchool, MdSettings, MdAnalytics, MdCalendarToday, MdEmail } from 'react-icons/md';
 import { useNavigate } from 'react-router-dom';
 
 export default function AdminDashboard() {
@@ -76,6 +76,7 @@ export default function AdminDashboard() {
     { label: 'Manage Calendar', path: '/admin/timetable?tab=coe', icon: <MdCalendarToday />, desc: 'Set semester dates and Calendar of Events' },
     { label: 'Post Events', path: '/admin/events', icon: <MdEvent />, desc: 'Share announcements and upcoming events' },
     { label: 'Complaint Box', path: '/admin/complaints', icon: <MdInbox />, desc: 'Review and resolve anonymous complaints' },
+    { label: 'Parent Emailer', path: '/admin/emailer', icon: <MdEmail />, desc: 'Send marks & attendance reports to parents' },
   ] : [
     { label: 'Branch Settings', path: '/branch/settings', icon: <MdSettings />, desc: 'Manage department settings and maintenance mode' },
     { label: 'Manage Classes', path: '/admin/classes', icon: <MdSchool />, desc: 'Create sections and configure class settings' },
@@ -84,6 +85,7 @@ export default function AdminDashboard() {
     { label: 'Post Events', path: '/admin/events', icon: <MdEvent />, desc: 'Share announcements and upcoming events' },
     { label: 'Complaint Box', path: '/admin/complaints', icon: <MdInbox />, desc: 'Review and resolve anonymous complaints' },
     { label: 'Upload Marks Cards', path: '/admin/marks-cards', icon: <MdCheckCircle />, desc: 'Upload semester PDFs for students' },
+    { label: 'Parent Emailer', path: '/admin/emailer', icon: <MdEmail />, desc: 'Send marks & attendance reports to parents' },
   ];
 
   return (

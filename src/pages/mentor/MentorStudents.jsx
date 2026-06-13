@@ -3,10 +3,12 @@ import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
 import {
   queryDocuments, getById,
-  getAttendanceByStudent, getAttendanceSummary, getAICTEByStudent, getStudentsByClass
+  getAttendanceByStudent, getAttendanceSummary, getAICTEByStudent, getStudentsByClass,
+  updateDocument
 } from '../../appwrite/database';
 import { where } from '../../appwrite/database';
 import { MdPeople, MdSearch, MdExpandMore, MdExpandLess, MdStar, MdCheckCircle } from 'react-icons/md';
+import { toast } from 'react-hot-toast';
 
 export default function MentorStudents() {
   const { userProfile, currentUser } = useAuth();
@@ -16,6 +18,10 @@ export default function MentorStudents() {
   const [menteeData, setMenteeData] = useState({});
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState({});
+
+  // Parent details editor states
+  const [editingParentStudent, setEditingParentStudent] = useState(null);
+  const [parentForm, setParentForm] = useState({ name: '', email: '', phone: '' });
 
   useEffect(() => {
     if (!currentUser?.uid) return;
@@ -81,6 +87,37 @@ export default function MentorStudents() {
   }, [currentUser, userProfile]);
 
   const toggleExpand = (id) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  const startEditParent = (s) => {
+    setEditingParentStudent(s.id);
+    setParentForm({
+      name: s.parent1_name || '',
+      email: s.parent1_email || '',
+      phone: s.parent1_phone || ''
+    });
+  };
+
+  const handleSaveParent = async (studentId) => {
+    try {
+      await updateDocument('students', studentId, {
+        parent1_name: parentForm.name,
+        parent1_email: parentForm.email,
+        parent1_phone: parentForm.phone
+      });
+      // Update local state
+      setMentees(prev => prev.map(m => m.id === studentId ? {
+        ...m,
+        parent1_name: parentForm.name,
+        parent1_email: parentForm.email,
+        parent1_phone: parentForm.phone
+      } : m));
+      setEditingParentStudent(null);
+      toast.success('Parent details updated!');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to update parent details: ' + err.message);
+    }
+  };
 
   const attnColor = (pct) => {
     if (pct === null || pct === undefined) return 'var(--text-muted)';
@@ -221,6 +258,92 @@ export default function MentorStudents() {
                             </div>
                           ))}
                         </div>
+                      </div>
+
+                      {/* Parent Details Block */}
+                      <div style={{ gridColumn: 'span 2', borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <h4 style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+                            👪 Parent Details
+                          </h4>
+                          {editingParentStudent !== s.id && (
+                            <button
+                              onClick={() => startEditParent(s)}
+                              className="btn btn-ghost btn-sm"
+                              style={{ padding: '2px 8px', fontSize: '0.72rem' }}
+                            >
+                              Edit Details
+                            </button>
+                          )}
+                        </div>
+
+                        {editingParentStudent === s.id ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--surface-1)', padding: 12, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                            <div className="grid-3" style={{ gap: 10 }}>
+                              <div>
+                                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Parent Name(s)</label>
+                                <input
+                                  type="text"
+                                  className="form-control form-control-sm"
+                                  value={parentForm.name}
+                                  onChange={(e) => setParentForm(prev => ({ ...prev, name: e.target.value }))}
+                                  placeholder="e.g. John & Mary Doe"
+                                />
+                              </div>
+                              <div>
+                                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Parent Email(s)</label>
+                                <input
+                                  type="email"
+                                  className="form-control form-control-sm"
+                                  value={parentForm.email}
+                                  onChange={(e) => setParentForm(prev => ({ ...prev, email: e.target.value }))}
+                                  placeholder="e.g. parent@example.com"
+                                />
+                              </div>
+                              <div>
+                                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Parent Phone(s)</label>
+                                <input
+                                  type="text"
+                                  className="form-control form-control-sm"
+                                  value={parentForm.phone}
+                                  onChange={(e) => setParentForm(prev => ({ ...prev, phone: e.target.value }))}
+                                  placeholder="e.g. +91 9876543210"
+                                />
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                              <button
+                                onClick={() => setEditingParentStudent(null)}
+                                className="btn btn-outline btn-sm"
+                                style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => handleSaveParent(s.id)}
+                                className="btn btn-primary btn-sm"
+                                style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                              >
+                                Save Details
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="grid-3" style={{ gap: 12, background: 'var(--surface-1)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                            <div>
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block' }}>Name(s)</span>
+                              <strong style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>{s.parent1_name || '—'}</strong>
+                            </div>
+                            <div>
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block' }}>Email(s)</span>
+                              <strong style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>{s.parent1_email || '—'}</strong>
+                            </div>
+                            <div>
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block' }}>Phone Number(s)</span>
+                              <strong style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>{s.parent1_phone || '—'}</strong>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -33,6 +33,7 @@ import AdminMarksCards    from './pages/admin/UploadMarksCards';
 import AdminEvents        from './pages/admin/PostEvents';
 import AdminComplaintBox  from './pages/admin/ComplaintBox';
 import ManageSubjects     from './pages/admin/ManageSubjects';
+import ParentEmailer     from './pages/admin/ParentEmailer';
 
 // Teacher
 import TeacherHome        from './pages/teacher/TeacherHome';
@@ -131,6 +132,7 @@ function App() {
           <Route path="/admin/events" element={<PrivateRoute allowedRoles={['admin']}><AdminEvents /></PrivateRoute>} />
           <Route path="/admin/complaints" element={<PrivateRoute allowedRoles={['admin']}><AdminComplaintBox /></PrivateRoute>} />
           <Route path="/admin/chat" element={<PrivateRoute allowedRoles={['admin']} allowDuringMaintenance={true}><ClassChat /></PrivateRoute>} />
+          <Route path="/admin/emailer" element={<PrivateRoute allowedRoles={['admin']}><ParentEmailer /></PrivateRoute>} />
 
           {/* Teacher Routes */}
           <Route path="/teacher" element={<PrivateRoute allowedRoles={['teacher']}><TeacherHome /></PrivateRoute>} />

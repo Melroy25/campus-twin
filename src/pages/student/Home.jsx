@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { useAuth } from '../../context/AuthContext';
-import { listenEvents, getAttendanceByStudent, getAttendanceSummary, getAICTEByStudent, getById } from '../../appwrite/database';
+import { listenEvents, getAttendanceByStudent, getAttendanceSummary, getAICTEByStudent, getById, queryDocuments } from '../../appwrite/database';
+import { Query } from 'appwrite';
 import { supabase } from '../../supabase/config';
-import { MdCheckCircle, MdStar, MdEvent, MdPerson, MdDelete, MdAdd, MdCalendarToday, MdCheckBox, MdCheckBoxOutlineBlank } from 'react-icons/md';
+import { MdCheckCircle, MdStar, MdEvent, MdPerson, MdDelete, MdAdd, MdCalendarToday, MdCheckBox, MdCheckBoxOutlineBlank, MdWork } from 'react-icons/md';
 import { toast } from 'react-hot-toast';
 
 export default function StudentHome() {
@@ -12,6 +13,7 @@ export default function StudentHome() {
   const [events, setEvents] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [aicteTotal, setAicteTotal] = useState(0);
+  const [examHistory, setExamHistory] = useState([]);
   const navigate = useNavigate();
   
   // To-Do list states
@@ -55,7 +57,10 @@ export default function StudentHome() {
       const total = items
         .filter((i) => i.status === 'approved')
         .reduce((sum, i) => sum + (Number(i.points) || 0), 0);
-      setAicteTotal(Math.min(total, 25));
+      setAicteTotal(total); // Keep raw total for placement calc
+    });
+    queryDocuments('examHistory', [Query.equal('student_id', currentUser.uid)]).then((history) => {
+      setExamHistory(history);
     });
     
     // Fetch SQL Todos
@@ -249,6 +254,117 @@ export default function StudentHome() {
             <div className="stat-label">Upcoming Events</div>
           </div>
         </div>
+
+        {/* Placement Readiness Predictor */}
+        {(() => {
+          const totalEarnedCredits = examHistory.reduce((acc, curr) => acc + (Number(curr.credits_earned) || 0), 0);
+          const totalRegCredits = examHistory.reduce((acc, curr) => acc + (Number(curr.credits_registered) || 0), 0);
+          const weightedSgpa = examHistory.reduce((acc, curr) => acc + ((Number(curr.sgpa) || 0) * (Number(curr.credits_registered) || 0)), 0);
+          const cgpaValue = totalRegCredits > 0 ? parseFloat((weightedSgpa / totalRegCredits).toFixed(2)) : 0.0;
+          const backlogs = examHistory.filter(h => h.credits_earned < h.credits_registered).length;
+          const avgAttendanceVal = attendance.length
+            ? Math.round(attendance.reduce((s, a) => s + a.percentage, 0) / attendance.length)
+            : 0;
+
+          const calculateReadinessScore = () => {
+            let score = 0;
+            if (cgpaValue >= 8.0) score += 40;
+            else if (cgpaValue >= 7.0) score += 30;
+            else if (cgpaValue >= 6.0) score += 20;
+            else if (cgpaValue >= 5.0) score += 10;
+            
+            if (avgAttendanceVal >= 85) score += 30;
+            else if (avgAttendanceVal >= 75) score += 25;
+            else if (avgAttendanceVal >= 65) score += 15;
+            
+            if (aicteTotal >= 20) score += 15;
+            else if (aicteTotal >= 10) score += 10;
+            else if (aicteTotal >= 5) score += 5;
+            
+            if (backlogs === 0) score += 15;
+            else if (backlogs === 1) score += 5;
+            
+            return score;
+          };
+
+          const readinessScore = calculateReadinessScore();
+          const tier1Eligible = cgpaValue >= 8.0 && avgAttendanceVal >= 75 && backlogs === 0;
+          const tier2Eligible = cgpaValue >= 7.0 && avgAttendanceVal >= 75 && backlogs <= 1;
+          const tier3Eligible = cgpaValue >= 6.0 && avgAttendanceVal >= 65 && backlogs <= 2;
+
+          return (
+            <div className="card mb-24" style={{ border: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 24, alignItems: 'center' }}>
+              {/* Circular Gauge */}
+              <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: 20 }}>
+                <h4 style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginBottom: 16, textTransform: 'uppercase', fontWeight: 700, letterSpacing: 0.5 }}>
+                  Placement Readiness Index
+                </h4>
+                <div style={{ position: 'relative', width: 130, height: 130, margin: '0 auto' }}>
+                  <svg style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
+                    <circle cx="65" cy="65" r="54" stroke="var(--border)" strokeWidth="8" fill="transparent" />
+                    <circle 
+                      cx="65" cy="65" r="54" 
+                      stroke={readinessScore >= 75 ? 'var(--success)' : readinessScore >= 50 ? 'var(--primary)' : 'var(--danger)'} 
+                      strokeWidth="8" fill="transparent"
+                      strokeDasharray={2 * Math.PI * 54}
+                      strokeDashoffset={2 * Math.PI * 54 * (1 - readinessScore / 100)}
+                      strokeLinecap="round"
+                      style={{ transition: 'stroke-dashoffset 0.8s ease' }}
+                    />
+                  </svg>
+                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-primary)' }}>{readinessScore}%</span>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>READINESS</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stats & Tier details */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div>
+                  <h3 style={{ margin: '0 0 4px 0', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <MdWork style={{ color: 'var(--primary)' }} /> Placement Eligibility Predictor
+                  </h3>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0 }}>
+                    Evaluated dynamically using your current CGPA ({cgpaValue.toFixed(2)}), attendance ({avgAttendanceVal}%), and active backlogs ({backlogs}).
+                  </p>
+                </div>
+
+                {/* Company Tiers */}
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ padding: '8px 12px', background: tier1Eligible ? 'rgba(16, 185, 129, 0.08)' : 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', flex: 1, minWidth: 140 }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>TIER 1 (Product Giants)</div>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: tier1Eligible ? 'var(--success)' : 'var(--text-muted)' }}>
+                      {tier1Eligible ? '✅ Eligible' : '🔒 Locked'}
+                    </span>
+                  </div>
+                  <div style={{ padding: '8px 12px', background: tier2Eligible ? 'rgba(79, 70, 229, 0.08)' : 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', flex: 1, minWidth: 140 }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>TIER 2 (Dream MNCs)</div>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: tier2Eligible ? 'var(--primary)' : 'var(--text-muted)' }}>
+                      {tier2Eligible ? '✅ Eligible' : '🔒 Locked'}
+                    </span>
+                  </div>
+                  <div style={{ padding: '8px 12px', background: tier3Eligible ? 'rgba(59, 130, 246, 0.08)' : 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', flex: 1, minWidth: 140 }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>TIER 3 (Mass Recruiters)</div>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: tier3Eligible ? 'var(--info)' : 'var(--text-muted)' }}>
+                      {tier3Eligible ? '✅ Eligible' : '🔒 Locked'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Feedback note */}
+                <div style={{ fontSize: '0.8rem', padding: '6px 12px', background: 'var(--surface-2)', borderLeft: '3px solid var(--primary)', borderRadius: '0 var(--radius-sm) var(--radius-sm) 0', color: 'var(--text-secondary)' }}>
+                  {readinessScore >= 75 
+                    ? '🎉 Outstanding readiness! Keep maintaining your stats to secure prime placement packages.'
+                    : readinessScore >= 50 
+                      ? '📈 Good progress. Focus on resolving any backlogs and maintaining a CGPA above 7.0 to unlock Tier 2 opportunities.'
+                      : '⚠️ Critical! Boost your attendance above 75% and raise your CGPA to qualify for minimum Tier 3 mass recruitments.'
+                  }
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Dashboard Grid */}
         <div className="grid-2 mb-24" style={{ alignItems: 'start', gap: 24 }}>

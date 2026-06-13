@@ -8,7 +8,7 @@ import {
   MdGroup, MdPeople, MdSettings, MdEventNote,
   MdLogout, MdHowToReg, MdThumbUp, MdClose,
   MdSchool, MdInbox, MdHome, MdPerson, MdBook, MdFolder,
-  MdCalendarToday, MdWork
+  MdCalendarToday, MdWork, MdEmail
 } from 'react-icons/md';
 import logoImage from '../assets/about-section-college.jpg';
 
@@ -96,6 +96,7 @@ export default function Sidebar({ isOpen, onClose }) {
         { label: 'Manage Calendar & PDFs', icon: <MdCalendarToday />, path: '/admin/timetable' },
         { label: 'Post Events', icon: <MdEventNote />, path: '/admin/events' },
         { label: 'Complaint Box', icon: <MdInbox />, path: '/admin/complaints' },
+        { label: 'Parent Emailer', icon: <MdEmail />, path: '/admin/emailer' },
         { label: 'Class Chat', icon: <MdGroup />, path: '/admin/chat' },
       ];
     } else {
@@ -110,6 +111,7 @@ export default function Sidebar({ isOpen, onClose }) {
         { label: 'Upload Marks Cards', icon: <MdDescription />, path: '/admin/marks-cards' },
         { label: 'Post Events', icon: <MdEventNote />, path: '/admin/events' },
         { label: 'Complaint Box', icon: <MdInbox />, path: '/admin/complaints' },
+        { label: 'Parent Emailer', icon: <MdEmail />, path: '/admin/emailer' },
         { label: 'Class Chat', icon: <MdGroup />, path: '/admin/chat' },
       ];
     }
