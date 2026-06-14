@@ -630,7 +630,7 @@ export default function StudentMarks() {
                                 ? 'Legacy Structure: IA1 + IA2 + ASS'
                                 : parsed.isIntegrated
                                   ? 'Integrated: (Theory CIE * 0.6) + (Lab CIE * 0.4)'
-                                  : 'Theory: (IA Avg * 0.8) + (Assg Avg)'
+                                  : 'Theory: (IA Avg * 0.6) + Assg1 + Assg2'
                               }
                             </span>
                           </div>

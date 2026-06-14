@@ -89,12 +89,12 @@ export default function TeacherAddMarks() {
 
     // IA Avg (max 50)
     const iaAvg = (ia1 + ia2) / 2;
-    const iaScaled = iaAvg * 0.8; // scale 50 -> 40
+    const iaScaled = iaAvg * 0.6; // scale 50 -> 30
 
-    // Assignment Avg (max 10)
-    const assAvg = (ass1 + ass2) / 2;
+    // Assignments sum (max 20)
+    const assSum = ass1 + ass2;
 
-    const theoryTotal = iaScaled + assAvg; // Max 50
+    const theoryTotal = iaScaled + assSum; // Max 50
 
     if (isIntegrated) {
       const lab1 = m.lab1 === '' ? 0 : Number(m.lab1) || 0;
