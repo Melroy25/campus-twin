@@ -87,24 +87,23 @@ export default function TeacherAddMarks() {
     const ass1 = m.ass1 === '' ? 0 : Number(m.ass1) || 0;
     const ass2 = m.ass2 === '' ? 0 : Number(m.ass2) || 0;
 
-    // IA Avg (max 50)
-    const iaAvg = (ia1 + ia2) / 2;
-    const iaScaled = iaAvg * 0.6; // scale 50 -> 30
-
-    // Assignments sum (max 20)
-    const assSum = ass1 + ass2;
-
-    const theoryTotal = iaScaled + assSum; // Max 50
-
     if (isIntegrated) {
       const lab1 = m.lab1 === '' ? 0 : Number(m.lab1) || 0;
       const lab2 = m.lab2 === '' ? 0 : Number(m.lab2) || 0;
-      const labAvg = (lab1 + lab2) / 2; // Max 50
 
-      // CIE Total = 60% Theory + 40% Lab
-      const finalTotal = (theoryTotal * 0.6) + (labAvg * 0.4);
+      // Lab CIE = (IA1 + IA2) * 0.2 [Max 20] + (Lab1 + Lab2) * 0.1 [Max 10] + Assg1 + Assg2 [Max 20]
+      const theoryIaPortion = (ia1 + ia2) * 0.2;
+      const labPortion = (lab1 + lab2) * 0.1;
+      const assPortion = ass1 + ass2;
+
+      const finalTotal = theoryIaPortion + labPortion + assPortion; // Max 50
       return Math.round(finalTotal);
     }
+
+    // Theory CIE = (IA1 + IA2) * 0.3 [Max 30] + Assg1 + Assg2 [Max 20]
+    const theoryIaScaled = (ia1 + ia2) * 0.3;
+    const assSum = ass1 + ass2;
+    const theoryTotal = theoryIaScaled + assSum; // Max 50
 
     return Math.round(theoryTotal);
   };

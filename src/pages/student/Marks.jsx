@@ -629,8 +629,8 @@ export default function StudentMarks() {
                               {parsed.isLegacy 
                                 ? 'Legacy Structure: IA1 + IA2 + ASS'
                                 : parsed.isIntegrated
-                                  ? 'Integrated: (Theory CIE * 0.6) + (Lab CIE * 0.4)'
-                                  : 'Theory: (IA Avg * 0.6) + Assg1 + Assg2'
+                                  ? 'Integrated: (IA Sum * 0.2) + (Lab Sum * 0.1) + Assg1 + Assg2'
+                                  : 'Theory: (IA Sum * 0.3) + Assg1 + Assg2'
                               }
                             </span>
                           </div>
