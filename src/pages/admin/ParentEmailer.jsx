@@ -15,6 +15,7 @@ export default function ParentEmailer() {
   const [students, setStudents] = useState([]);
   const [allAttendance, setAllAttendance] = useState([]);
   const [allMarks, setAllMarks] = useState([]);
+  const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Email sending status states
@@ -29,8 +30,9 @@ export default function ParentEmailer() {
       getAll('classes'),
       getAll('students'),
       getAll('attendance'),
-      getAll('marks')
-    ]).then(([classesData, studentsData, attendanceData, marksData]) => {
+      getAll('marks'),
+      getAll('subjects')
+    ]).then(([classesData, studentsData, attendanceData, marksData, subjectsData]) => {
       // Filter by branch if not super admin
       if (userProfile?.is_super_admin) {
         setClasses(classesData);
@@ -44,6 +46,7 @@ export default function ParentEmailer() {
       }
       setAllAttendance(attendanceData);
       setAllMarks(marksData);
+      setSubjects(subjectsData);
       setLoading(false);
     }).catch(err => {
       console.error(err);
@@ -55,6 +58,87 @@ export default function ParentEmailer() {
   const selectedClass = classes.find(c => c.id === selectedClassId);
   const classStudents = students.filter(s => s.class_id === selectedClassId);
 
+  const parseMarkDetails = (m, isIntegrated) => {
+    let details = {
+      ia1: null,
+      ia2: null,
+      ass1: null,
+      ass2: null,
+      lab1: null,
+      lab2: null,
+      total: 0,
+      isIntegrated: isIntegrated,
+      isLegacy: false
+    };
+
+    if (m.marks_obtained) {
+      try {
+        const parsed = JSON.parse(m.marks_obtained);
+        details = {
+          ia1: parsed.ia1 ?? null,
+          ia2: parsed.ia2 ?? null,
+          ass1: parsed.ass1 ?? null,
+          ass2: parsed.ass2 ?? null,
+          lab1: parsed.lab1 ?? null,
+          lab2: parsed.lab2 ?? null,
+          total: parsed.total ?? 0,
+          isIntegrated: isIntegrated,
+          isLegacy: false
+        };
+      } catch (e) {
+        console.error("Failed to parse marks_obtained JSON", e);
+      }
+    } else {
+      // Fallback to legacy fields
+      const t1 = m.test1 ?? null;
+      const t2 = m.test2 ?? null;
+      const ass = m.assignment ?? null;
+      const tot = (t1 || 0) + (t2 || 0) + (ass || 0);
+      details = {
+        ia1: t1,
+        ia2: t2,
+        ass1: ass,
+        ass2: null,
+        lab1: null,
+        lab2: null,
+        total: tot,
+        isIntegrated: false,
+        isLegacy: true
+      };
+    }
+    return details;
+  };
+
+  const getGrade = (parsed) => {
+    let obtainedSum = 0;
+    let maxSum = 0;
+
+    const iaMax = parsed.isLegacy ? 10 : 50;
+    const assMax = 10;
+    const labMax = 50;
+
+    if (parsed.ia1 !== null) { obtainedSum += parsed.ia1; maxSum += iaMax; }
+    if (parsed.ia2 !== null) { obtainedSum += parsed.ia2; maxSum += iaMax; }
+    if (parsed.ass1 !== null) { obtainedSum += parsed.ass1; maxSum += assMax; }
+    if (parsed.ass2 !== null) { obtainedSum += parsed.ass2; maxSum += assMax; }
+    
+    if (parsed.isIntegrated) {
+      if (parsed.lab1 !== null) { obtainedSum += parsed.lab1; maxSum += labMax; }
+      if (parsed.lab2 !== null) { obtainedSum += parsed.lab2; maxSum += labMax; }
+    }
+
+    if (maxSum === 0) return { grade: '—', label: 'No Marks Uploaded', color: '#64748b' };
+
+    const scaleFactor = 2; 
+    const pct = ((obtainedSum * scaleFactor) / (maxSum * scaleFactor)) * 100;
+    if (pct >= 90) return { grade: 'O', label: 'Outstanding', color: '#10b981' };
+    if (pct >= 80) return { grade: 'A+', label: 'Excellent', color: '#3b82f6' };
+    if (pct >= 70) return { grade: 'A', label: 'Very Good', color: '#6366f1' };
+    if (pct >= 60) return { grade: 'B+', label: 'Good', color: '#f59e0b' };
+    if (pct >= 50) return { grade: 'B', label: 'Average', color: '#a855f7' };
+    return { grade: 'F', label: 'Fail / Shortage', color: '#ef4444' };
+  };
+
   // Computes student summary data (attendance average + CIE marks list)
   const getStudentMetrics = (studentId) => {
     // 1. Attendance
@@ -63,24 +147,37 @@ export default function ParentEmailer() {
     const avgAttendance = summary.length
       ? Math.round(summary.reduce((s, a) => s + a.percentage, 0) / summary.length)
       : null;
+    const attendanceList = summary.map(a => ({
+      subject: a.subject,
+      present: a.present || 0,
+      absent: a.absent || 0,
+      percentage: a.percentage
+    }));
 
     // 2. Marks
     const studMarks = allMarks.filter(m => m.student_id === studentId);
     const marksList = studMarks.map(m => {
-      let score = 0;
-      if (m.marks_obtained) {
-        try {
-          score = JSON.parse(m.marks_obtained).total ?? 0;
-        } catch (e) {
-          score = m.total ?? 0;
-        }
-      } else {
-        score = (m.test1 ?? 0) + (m.test2 ?? 0) + (m.assignment ?? 0);
-      }
-      return { subject: m.subject, score };
+      const subDoc = subjects.find(s => s.courseName.trim().toLowerCase() === m.subject.trim().toLowerCase());
+      const isIntegrated = subDoc?.is_lab_integrated === true;
+      const parsed = parseMarkDetails(m, isIntegrated);
+      const { grade, color } = getGrade(parsed);
+
+      return {
+        subject: m.subject,
+        ia1: parsed.ia1,
+        ia2: parsed.ia2,
+        ass1: parsed.ass1,
+        ass2: parsed.ass2,
+        lab1: parsed.isIntegrated ? parsed.lab1 : 'NA',
+        lab2: parsed.isIntegrated ? parsed.lab2 : 'NA',
+        total: parsed.total,
+        isLegacy: parsed.isLegacy,
+        grade,
+        color
+      };
     });
 
-    return { avgAttendance, marksList };
+    return { avgAttendance, attendanceList, marksList };
   };
 
   const handleSelectAll = (e) => {
@@ -113,7 +210,8 @@ export default function ParentEmailer() {
           classLabel: selectedClass?.label || student.class_id,
           email: student.parent1_email,
           marksList: metrics.marksList,
-          attendancePct: metrics.avgAttendance
+          attendancePct: metrics.avgAttendance,
+          attendanceList: metrics.attendanceList
         })
       });
 
@@ -303,7 +401,13 @@ export default function ParentEmailer() {
                             </td>
                             <td>
                               {s.parent1_email ? (
-                                <span style={{ fontSize: '0.82rem' }}>{s.parent1_email}</span>
+                                <span style={{ fontSize: '0.82rem', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                  {s.parent1_email.split(';').map((email, idx) => (
+                                    <span key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                      ✉️ <span style={{ fontFamily: 'monospace' }}>{email.trim()}</span>
+                                    </span>
+                                  ))}
+                                </span>
                               ) : (
                                 <span style={{ color: 'var(--danger)', fontSize: '0.8rem', fontWeight: 600 }}>⚠️ Missing Contact</span>
                               )}

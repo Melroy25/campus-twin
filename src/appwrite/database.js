@@ -282,6 +282,9 @@ export const getAttendanceSummary = (attendanceRecords) => {
   });
   return Object.keys(summary).map((sub) => ({
     subject: sub,
+    present: summary[sub].present,
+    absent: summary[sub].total - summary[sub].present,
+    total: summary[sub].total,
     percentage: Math.round((summary[sub].present / summary[sub].total) * 100),
   }));
 };

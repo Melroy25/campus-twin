@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
+import { toast } from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import { getMarksByStudent, getAll, queryDocuments } from '../../appwrite/database';
 import { Query } from 'appwrite';
@@ -12,9 +13,42 @@ import { MdGridView, MdList, MdInfoOutline, MdShowChart, MdCalculate, MdSchool, 
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
+const getShortSubjectName = (name) => {
+  const clean = name.trim();
+  const mappings = {
+    "Universal Human Values": "UHV",
+    "Python Programming Language": "Python",
+    "Discrete Mathematical Structures": "DMS",
+    "Design and Analysis of Algorithm": "DAA",
+    "Database Management System": "DBMS",
+    "Operating System": "OS",
+    "Data Ananysis using R Programming": "R Prog",
+    "Computational Tools for Engineers": "CTE",
+    "Industry Oriented Training -Computing Skills": "IOT-CS",
+    "Industry Oriented Training - Computing Skills": "IOT-CS"
+  };
+  if (mappings[clean]) return mappings[clean];
+  
+  if (clean.length > 15) {
+    const words = clean.split(/[\s-]+/);
+    if (words.length > 1) {
+      return words.map(w => w[0]?.toUpperCase()).join('');
+    }
+  }
+  return clean;
+};
+
 export default function StudentMarks() {
-  const { currentUser } = useAuth();
+  const { userProfile, currentUser } = useAuth();
+  const getSemesterNumber = (profile) => {
+    const semStr = profile?.class_semester || profile?.semester;
+    if (!semStr) return 4;
+    const match = String(semStr).match(/\d+/);
+    return match ? parseInt(match[0], 10) : 4;
+  };
+  const currentSemNum = getSemesterNumber(userProfile);
   const [marks, setMarks] = useState([]);
+  const [simulatedCieMarks, setSimulatedCieMarks] = useState({}); // subject -> simulated CIE marks (0-50)
   const [subjects, setSubjects] = useState([]);
   const [examHistory, setExamHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -22,7 +56,7 @@ export default function StudentMarks() {
   const [activeTab, setActiveTab] = useState('cie'); // 'cie' | 'calculator'
 
   // Calculator states
-  const [simulatedGrades, setSimulatedGrades] = useState({}); // subject -> grade point (0-10)
+  const [semMarks, setSemMarks] = useState({}); // subject -> expected SEM marks (0-50)
   const [customPastSemesters, setCustomPastSemesters] = useState(
     Array.from({ length: 8 }).map((_, i) => ({ semester: i + 1, sgpa: '', credits: '', exists: false }))
   );
@@ -35,17 +69,60 @@ export default function StudentMarks() {
       getAll('subjects'),
       queryDocuments('examHistory', [Query.equal('student_id', currentUser.uid)])
     ]).then(([marksData, subjectsData, historyData]) => {
-      // Filter out marks for subjects that do not exist in the subjects list
-      const validMarks = marksData.filter(m => 
-        subjectsData.some(s => s.courseName.trim().toLowerCase() === m.subject.trim().toLowerCase())
-      );
-      setMarks(validMarks);
+      // 1. Get registered subject IDs
+      let registeredIds = [];
+      if (userProfile?.registered_subjects) {
+        try {
+          registeredIds = typeof userProfile.registered_subjects === 'string'
+            ? JSON.parse(userProfile.registered_subjects)
+            : userProfile.registered_subjects;
+        } catch (e) {
+          console.error('Failed to parse registered_subjects:', e);
+        }
+      }
+
+      // 2. Fetch full registered subjects
+      const studentSubjects = subjectsData.filter(sub => registeredIds.includes(sub.id || sub.$id));
+
+      // 3. For each registered subject, check if a marks record exists
+      const mergedMarks = studentSubjects.map(sub => {
+        const existingRecord = marksData.find(m => m.subject.trim().toLowerCase() === sub.courseName.trim().toLowerCase());
+        if (existingRecord) {
+          return {
+            ...existingRecord,
+            isCieFrozen: true
+          };
+        } else {
+          return {
+            id: `mock-${sub.id || sub.$id}`,
+            subject: sub.courseName,
+            isCieFrozen: false,
+            isMock: true
+          };
+        }
+      });
+
+      setMarks(mergedMarks);
       setSubjects(subjectsData);
       setExamHistory(historyData);
 
-      // Pre-fill past semesters from exam history
+      // Pre-fill past semesters: check localStorage first, fallback to exam history
+      const savedSemestersRaw = localStorage.getItem(`past_semesters_${currentUser.uid}`);
+      let savedSemesters = null;
+      if (savedSemestersRaw) {
+        try {
+          savedSemesters = JSON.parse(savedSemestersRaw);
+        } catch (e) {
+          console.error("Failed to parse saved semesters", e);
+        }
+      }
+
       const initialSemesters = Array.from({ length: 8 }).map((_, i) => {
         const semNum = i + 1;
+        const saved = savedSemesters?.find(s => s.semester === semNum);
+        if (saved) {
+          return saved;
+        }
         const record = historyData.find(h => Number(h.semester) === semNum);
         return {
           semester: semNum,
@@ -56,22 +133,45 @@ export default function StudentMarks() {
       });
       setCustomPastSemesters(initialSemesters);
 
-      // Pre-fill expected grades based on current CIE (double the CIE to estimate a grade)
-      const initialGrades = {};
-      validMarks.forEach(m => {
-        const subDoc = subjectsData.find(s => s.courseName.trim().toLowerCase() === m.subject.trim().toLowerCase());
-        const isIntegrated = subDoc?.is_lab_integrated === true;
-        const parsed = parseMarkDetails(m, isIntegrated);
-        const estimatedGrade = getGrade(parsed).grade;
-        
-        const GRADE_POINTS = { 'O': 10, 'A+': 9, 'A': 8, 'B+': 7, 'B': 6, 'C': 5, 'P': 4, 'F': 0, '—': 0 };
-        initialGrades[m.subject] = GRADE_POINTS[estimatedGrade] || 8; // Default to 'A' if not found
+      // Pre-fill expected SEM marks: check localStorage first, fallback to default 35
+      const savedSemMarksRaw = localStorage.getItem(`sim_sem_marks_${currentUser.uid}`);
+      let savedSemMarks = {};
+      if (savedSemMarksRaw) {
+        try {
+          savedSemMarks = JSON.parse(savedSemMarksRaw);
+        } catch (e) {
+          console.error("Failed to parse saved sem marks", e);
+        }
+      }
+
+      const initialSemMarks = {};
+      mergedMarks.forEach(m => {
+        initialSemMarks[m.subject] = savedSemMarks[m.subject] !== undefined ? savedSemMarks[m.subject] : 35;
       });
-      setSimulatedGrades(initialGrades);
+      setSemMarks(initialSemMarks);
+
+      // Pre-fill simulated CIE marks for mock subjects: check localStorage first, fallback to default 30
+      const savedCieMarksRaw = localStorage.getItem(`sim_cie_marks_${currentUser.uid}`);
+      let savedCieMarks = {};
+      if (savedCieMarksRaw) {
+        try {
+          savedCieMarks = JSON.parse(savedCieMarksRaw);
+        } catch (e) {
+          console.error("Failed to parse saved CIE marks", e);
+        }
+      }
+
+      const initialSimCie = {};
+      mergedMarks.forEach(m => {
+        if (!m.isCieFrozen) {
+          initialSimCie[m.subject] = savedCieMarks[m.subject] !== undefined ? savedCieMarks[m.subject] : 30;
+        }
+      });
+      setSimulatedCieMarks(initialSimCie);
 
       setLoading(false);
     });
-  }, [currentUser]);
+  }, [currentUser, userProfile]);
 
   const parseMarkDetails = (m, isIntegrated) => {
     let details = {
@@ -83,8 +183,15 @@ export default function StudentMarks() {
       lab2: null,
       total: 0,
       isIntegrated: isIntegrated,
-      isLegacy: false
+      isLegacy: false,
+      isMock: m.isMock || false
     };
+
+    if (m.isMock) {
+      const simCie = parseFloat(simulatedCieMarks[m.subject] ?? 30);
+      details.total = simCie;
+      return details;
+    }
 
     if (m.marks_obtained) {
       try {
@@ -155,7 +262,22 @@ export default function StudentMarks() {
     return { grade: 'F', label: 'Fail / Shortage', color: '#ef4444' }; // Red
   };
 
-  // Calculations for simulated SGPA
+  const getSimulatedGradeFromMarks = (cieScore, semScore, cieMax) => {
+    const totalObtained = cieScore + semScore;
+    const totalMax = cieMax + 50;
+    const pct = (totalObtained / totalMax) * 100;
+
+    if (pct >= 90) return { grade: 'O', gp: 10, color: '#10b981', label: 'Outstanding' };
+    if (pct >= 80) return { grade: 'A+', gp: 9, color: '#3b82f6', label: 'Excellent' };
+    if (pct >= 70) return { grade: 'A', gp: 8, color: '#6366f1', label: 'Very Good' };
+    if (pct >= 60) return { grade: 'B+', gp: 7, color: '#f59e0b', label: 'Good' };
+    if (pct >= 50) return { grade: 'B', gp: 6, color: '#a855f7', label: 'Above Average' };
+    if (pct >= 45) return { grade: 'C', gp: 5, color: '#ec4899', label: 'Average' };
+    if (pct >= 40) return { grade: 'P', gp: 4, color: '#64748b', label: 'Pass' };
+    return { grade: 'F', gp: 0, color: '#ef4444', label: 'Fail' };
+  };
+
+  // Calculations for simulated SGPA using semMarks input
   const calculatedSgpa = () => {
     let totalCredits = 0;
     let totalGradePoints = 0;
@@ -163,12 +285,28 @@ export default function StudentMarks() {
     marks.forEach(m => {
       const subDoc = subjects.find(s => s.courseName.trim().toLowerCase() === m.subject.trim().toLowerCase());
       const credits = subDoc?.credits ?? 3;
-      const gp = simulatedGrades[m.subject] ?? 0;
+      const isIntegrated = subDoc?.is_lab_integrated === true;
+      const parsed = parseMarkDetails(m, isIntegrated);
+      const cieMax = parsed.isLegacy ? 30 : 50;
+      const semScore = parseFloat(semMarks[m.subject] ?? 35);
+      const { gp } = getSimulatedGradeFromMarks(parsed.total, semScore, cieMax);
+      
       totalCredits += credits;
       totalGradePoints += credits * gp;
     });
 
     return totalCredits > 0 ? (totalGradePoints / totalCredits).toFixed(2) : '0.00';
+  };
+
+  const handleSavePastSemesters = () => {
+    localStorage.setItem(`past_semesters_${currentUser.uid}`, JSON.stringify(customPastSemesters));
+    toast.success("Simulation history saved!");
+  };
+
+  const handleSaveSimulationMarks = () => {
+    localStorage.setItem(`sim_sem_marks_${currentUser.uid}`, JSON.stringify(semMarks));
+    localStorage.setItem(`sim_cie_marks_${currentUser.uid}`, JSON.stringify(simulatedCieMarks));
+    toast.success("Simulation marks saved!");
   };
 
   const calculatedSgpaCredits = () => {
@@ -187,12 +325,14 @@ export default function StudentMarks() {
 
     // Add past semesters (excluding the one we are simulating)
     customPastSemesters.forEach(sem => {
-      if (sem.sgpa && sem.credits) {
-        const sVal = parseFloat(sem.sgpa);
-        const cVal = parseFloat(sem.credits);
-        if (!isNaN(sVal) && !isNaN(cVal)) {
-          totalWeightedSgpa += sVal * cVal;
-          totalCredits += cVal;
+      if (sem.semester !== currentSemNum) {
+        if (sem.sgpa && sem.credits) {
+          const sVal = parseFloat(sem.sgpa);
+          const cVal = parseFloat(sem.credits);
+          if (!isNaN(sVal) && !isNaN(cVal)) {
+            totalWeightedSgpa += sVal * cVal;
+            totalCredits += cVal;
+          }
         }
       }
     });
@@ -211,7 +351,7 @@ export default function StudentMarks() {
   const completedSemestersCount = () => {
     let count = 0;
     customPastSemesters.forEach(s => {
-      if (s.sgpa && s.credits) count++;
+      if (s.semester !== currentSemNum && s.sgpa && s.credits) count++;
     });
     return count;
   };
@@ -225,17 +365,27 @@ export default function StudentMarks() {
     let pastCredits = 0;
 
     customPastSemesters.forEach(sem => {
-      if (sem.sgpa && sem.credits) {
-        const sVal = parseFloat(sem.sgpa);
-        const cVal = parseFloat(sem.credits);
-        if (!isNaN(sVal) && !isNaN(cVal)) {
-          pastWeighted += sVal * cVal;
-          pastCredits += cVal;
+      if (sem.semester !== currentSemNum) {
+        if (sem.sgpa && sem.credits) {
+          const sVal = parseFloat(sem.sgpa);
+          const cVal = parseFloat(sem.credits);
+          if (!isNaN(sVal) && !isNaN(cVal)) {
+            pastWeighted += sVal * cVal;
+            pastCredits += cVal;
+          }
         }
       }
     });
 
-    const activeSemesters = completedSemestersCount();
+    // Add current simulated semester
+    const currentSgpa = parseFloat(calculatedSgpa());
+    const currentCredits = calculatedSgpaCredits();
+    if (currentSgpa > 0 && currentCredits > 0) {
+      pastWeighted += currentSgpa * currentCredits;
+      pastCredits += currentCredits;
+    }
+
+    const activeSemesters = completedSemestersCount() + 1; // +1 for simulated current semester
     const remainingSemesters = 8 - activeSemesters;
 
     if (remainingSemesters <= 0) {
@@ -261,11 +411,12 @@ export default function StudentMarks() {
   };
 
   const chartData = {
-    labels: marks.map((m) => m.subject),
+    labels: marks.map((m) => getShortSubjectName(m.subject)),
     datasets: [
       {
         label: 'CIE Internal Marks Obtained',
         data: marks.map((m) => {
+          if (m.isMock) return 0;
           const subDoc = subjects.find(s => s.courseName.trim().toLowerCase() === m.subject.trim().toLowerCase());
           const isIntegrated = subDoc?.is_lab_integrated === true;
           const parsed = parseMarkDetails(m, isIntegrated);
@@ -403,69 +554,87 @@ export default function StudentMarks() {
                               {m.subject}
                             </h4>
                           </div>
-                          <span className="badge" style={{ backgroundColor: `${color}15`, color, border: `1px solid ${color}30`, fontWeight: 700, fontSize: '0.85rem', padding: '4px 10px' }} title={label}>
-                            {grade}
+                          <span className="badge" style={{ backgroundColor: m.isMock ? 'rgba(100, 116, 139, 0.1)' : `${color}15`, color: m.isMock ? 'var(--text-muted)' : color, border: `1px solid ${m.isMock ? 'rgba(100, 116, 139, 0.2)' : `${color}30`}`, fontWeight: 700, fontSize: '0.85rem', padding: '4px 10px' }} title={m.isMock ? 'Pending Upload' : label}>
+                            {m.isMock ? '—' : grade}
                           </span>
                         </div>
 
                         {/* Progress score */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 'auto' }}>
                           <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>CIE Marks</span>
-                          <div>
-                            <strong style={{ fontSize: '1.8rem', fontWeight: 800, color }}>{parsed.total}</strong>
-                            <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>/{parsed.isLegacy ? 30 : 50}</span>
-                          </div>
+                          {m.isMock ? (
+                            <span style={{ fontSize: '0.88rem', color: 'var(--text-muted)', fontWeight: 600 }}>Not Uploaded</span>
+                          ) : (
+                            <div>
+                              <strong style={{ fontSize: '1.8rem', fontWeight: 800, color }}>{parsed.total}</strong>
+                              <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>/{parsed.isLegacy ? 30 : 50}</span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Bar */}
-                        <div style={{ height: 8, background: 'var(--border)', borderRadius: 4, overflow: 'hidden', margin: '8px 0 18px 0' }}>
-                          <div style={{ height: '100%', width: `${(parsed.total / (parsed.isLegacy ? 30 : 50)) * 100}%`, background: color, borderRadius: 4, transition: 'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)' }} />
-                        </div>
+                        {!m.isMock ? (
+                          <div style={{ height: 8, background: 'var(--border)', borderRadius: 4, overflow: 'hidden', margin: '8px 0 18px 0' }}>
+                            <div style={{ height: '100%', width: `${(parsed.total / (parsed.isLegacy ? 30 : 50)) * 100}%`, background: color, borderRadius: 4, transition: 'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)' }} />
+                          </div>
+                        ) : (
+                          <div style={{ height: 8, margin: '8px 0 18px 0' }} />
+                        )}
 
                         {/* Breakdown details */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px 14px', background: 'var(--surface-2)', padding: '12px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-                          <div>
-                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', fontWeight: 500 }}>IA 1</span>
-                            <strong style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{parsed.ia1 !== null ? `${parsed.ia1}/50` : '—'}</strong>
-                          </div>
-                          <div>
-                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', fontWeight: 500 }}>IA 2</span>
-                            <strong style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{parsed.ia2 !== null ? `${parsed.ia2}/50` : '—'}</strong>
-                          </div>
-                          <div>
-                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', fontWeight: 500 }}>Assignment 1</span>
-                            <strong style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{parsed.ass1 !== null ? `${parsed.ass1}/10` : '—'}</strong>
-                          </div>
-                          <div>
-                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', fontWeight: 500 }}>Assignment 2</span>
-                            <strong style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{parsed.ass2 !== null ? `${parsed.ass2}/10` : '—'}</strong>
-                          </div>
-                          {parsed.isIntegrated && (
+                          {m.isMock ? (
+                            <div style={{ gridColumn: 'span 2', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)', padding: '6px 0' }}>
+                              ⚠️ Teacher has not uploaded CIE scores yet.
+                            </div>
+                          ) : (
                             <>
                               <div>
-                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', fontWeight: 500 }}>Lab 1</span>
-                                <strong style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{parsed.lab1 !== null ? `${parsed.lab1}/50` : '—'}</strong>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', fontWeight: 500 }}>IA 1</span>
+                                <strong style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{parsed.ia1 !== null ? `${parsed.ia1}/50` : '—'}</strong>
                               </div>
                               <div>
-                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', fontWeight: 500 }}>Lab 2</span>
-                                <strong style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{parsed.lab2 !== null ? `${parsed.lab2}/50` : '—'}</strong>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', fontWeight: 500 }}>IA 2</span>
+                                <strong style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{parsed.ia2 !== null ? `${parsed.ia2}/50` : '—'}</strong>
                               </div>
+                              <div>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', fontWeight: 500 }}>Assignment 1</span>
+                                <strong style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{parsed.ass1 !== null ? `${parsed.ass1}/10` : '—'}</strong>
+                              </div>
+                              <div>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', fontWeight: 500 }}>Assignment 2</span>
+                                <strong style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{parsed.ass2 !== null ? `${parsed.ass2}/10` : '—'}</strong>
+                              </div>
+                              {parsed.isIntegrated && (
+                                <>
+                                  <div>
+                                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', fontWeight: 500 }}>Lab 1</span>
+                                    <strong style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{parsed.lab1 !== null ? `${parsed.lab1}/50` : '—'}</strong>
+                                  </div>
+                                  <div>
+                                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', fontWeight: 500 }}>Lab 2</span>
+                                    <strong style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{parsed.lab2 !== null ? `${parsed.lab2}/50` : '—'}</strong>
+                                  </div>
+                                </>
+                              )}
                             </>
                           )}
                         </div>
 
                         {/* Formula notice */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 14, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                          <MdInfoOutline style={{ fontSize: '0.85rem' }} />
-                          <span>
-                            {parsed.isLegacy 
-                              ? 'Legacy Structure: IA1 + IA2 + ASS'
-                              : parsed.isIntegrated
-                                ? 'Integrated: (Theory CIE * 0.6) + (Lab CIE * 0.4)'
-                                : 'Theory: (IA Avg * 0.8) + (Assg Avg)'
-                            }
-                          </span>
-                        </div>
+                        {!m.isMock && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 14, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            <MdInfoOutline style={{ fontSize: '0.85rem' }} />
+                            <span>
+                              {parsed.isLegacy 
+                                ? 'Legacy Structure: IA1 + IA2 + ASS'
+                                : parsed.isIntegrated
+                                  ? 'Integrated: (Theory CIE * 0.6) + (Lab CIE * 0.4)'
+                                  : 'Theory: (IA Avg * 0.8) + (Assg Avg)'
+                              }
+                            </span>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -500,16 +669,18 @@ export default function StudentMarks() {
                           return (
                             <tr key={m.id}>
                               <td className="font-semibold">{m.subject}</td>
-                              <td>{parsed.ia1 !== null ? `${parsed.ia1}/50` : '—'}</td>
-                              <td>{parsed.ia2 !== null ? `${parsed.ia2}/50` : '—'}</td>
-                              <td>{parsed.ass1 !== null ? `${parsed.ass1}/10` : '—'}</td>
-                              <td>{parsed.ass2 !== null ? `${parsed.ass2}/10` : '—'}</td>
-                              <td>{parsed.isIntegrated ? (parsed.lab1 !== null ? `${parsed.lab1}/50` : '—') : 'NA'}</td>
-                              <td>{parsed.isIntegrated ? (parsed.lab2 !== null ? `${parsed.lab2}/50` : '—') : 'NA'}</td>
-                              <td className="font-bold" style={{ color }}>{parsed.total}/{parsed.isLegacy ? 30 : 50}</td>
+                              <td>{m.isMock ? '—' : (parsed.ia1 !== null ? `${parsed.ia1}/50` : '—')}</td>
+                              <td>{m.isMock ? '—' : (parsed.ia2 !== null ? `${parsed.ia2}/50` : '—')}</td>
+                              <td>{m.isMock ? '—' : (parsed.ass1 !== null ? `${parsed.ass1}/10` : '—')}</td>
+                              <td>{m.isMock ? '—' : (parsed.ass2 !== null ? `${parsed.ass2}/10` : '—')}</td>
+                              <td>{m.isMock ? '—' : (parsed.isIntegrated ? (parsed.lab1 !== null ? `${parsed.lab1}/50` : '—') : 'NA')}</td>
+                              <td>{m.isMock ? '—' : (parsed.isIntegrated ? (parsed.lab2 !== null ? `${parsed.lab2}/50` : '—') : 'NA')}</td>
+                              <td className="font-bold" style={{ color: m.isMock ? 'var(--text-muted)' : color }}>
+                                {m.isMock ? 'Pending' : `${parsed.total}/${parsed.isLegacy ? 30 : 50}`}
+                              </td>
                               <td>
-                                <span className="badge" style={{ background: `${color}18`, color, fontWeight: 600 }}>
-                                  {grade}
+                                <span className="badge" style={{ background: m.isMock ? 'rgba(100, 116, 139, 0.1)' : `${color}18`, color: m.isMock ? 'var(--text-muted)' : color, fontWeight: 600 }}>
+                                  {m.isMock ? '—' : grade}
                                 </span>
                               </td>
                             </tr>
@@ -537,9 +708,18 @@ export default function StudentMarks() {
               
               {/* Left Column: Grade Simulator */}
               <div className="card" style={{ border: '1px solid var(--border)' }}>
-                <h3 className="mb-8" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <MdCalculate style={{ color: 'var(--primary)' }} /> Expected SGPA Simulator
-                </h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
+                    <MdCalculate style={{ color: 'var(--primary)' }} /> Expected SGPA Simulator
+                  </h3>
+                  <button 
+                    onClick={handleSaveSimulationMarks}
+                    className="btn btn-primary btn-sm"
+                    style={{ padding: '4px 10px', fontSize: '0.75rem', height: 'fit-content' }}
+                  >
+                    Save Simulation
+                  </button>
+                </div>
                 <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 20 }}>
                   Estimate your grades for this semester's current subjects. We've pre-filled initial estimations based on your CIE internal scores.
                 </p>
@@ -549,9 +729,10 @@ export default function StudentMarks() {
                     <thead>
                       <tr style={{ textAlign: 'left' }}>
                         <th>Subject</th>
-                        <th style={{ width: '100px', textAlign: 'center' }}>Credits</th>
-                        <th style={{ width: '100px', textAlign: 'center' }}>CIE Score</th>
-                        <th style={{ width: '150px' }}>Expected SEE Grade</th>
+                        <th style={{ width: '80px', textAlign: 'center' }}>Credits</th>
+                        <th style={{ width: '100px', textAlign: 'center' }}>CIE Marks</th>
+                        <th style={{ width: '130px', textAlign: 'center' }}>Sem Marks /50</th>
+                        <th style={{ width: '100px', textAlign: 'center' }}>Grade</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -560,7 +741,9 @@ export default function StudentMarks() {
                         const isIntegrated = subDoc?.is_lab_integrated === true;
                         const credits = subDoc?.credits ?? 3;
                         const parsed = parseMarkDetails(m, isIntegrated);
-                        const selectedVal = simulatedGrades[m.subject] ?? 8;
+                        const cieMax = parsed.isLegacy ? 30 : 50;
+                        const semScoreVal = semMarks[m.subject] ?? 35;
+                        const { grade, color, label } = getSimulatedGradeFromMarks(parsed.total, parseFloat(semScoreVal || 0), cieMax);
 
                         return (
                           <tr key={m.id}>
@@ -568,28 +751,59 @@ export default function StudentMarks() {
                             <td style={{ textAlign: 'center' }}>
                               <span className="badge badge-primary">{credits} Cr</span>
                             </td>
-                            <td style={{ textAlign: 'center', fontWeight: 'bold' }}>
-                              {parsed.total} / {parsed.isLegacy ? 30 : 50}
+                            <td style={{ textAlign: 'center' }}>
+                              {m.isCieFrozen ? (
+                                <strong style={{ fontWeight: 'bold' }}>{parsed.total} / {cieMax}</strong>
+                              ) : (
+                                <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
+                                  <input 
+                                    type="number" 
+                                    className="form-control"
+                                    min="0"
+                                    max={cieMax}
+                                    value={simulatedCieMarks[m.subject] ?? 30}
+                                    onChange={(e) => {
+                                      let val = e.target.value;
+                                      if (val !== '') {
+                                        val = Math.max(0, Math.min(cieMax, parseFloat(val) || 0));
+                                      }
+                                      setSimulatedCieMarks(prev => ({
+                                        ...prev,
+                                        [m.subject]: val
+                                      }));
+                                    }}
+                                    style={{ width: '70px', padding: '2px 4px', fontSize: '0.8rem', textAlign: 'center', border: '1px dashed var(--primary)', borderRadius: 'var(--radius-sm)' }}
+                                    placeholder="Sim CIE"
+                                    title="Teacher has not uploaded CIE. Click to simulate."
+                                  />
+                                  <span style={{ fontSize: '0.62rem', color: 'var(--primary)', marginTop: 2 }}>Simulated</span>
+                                </div>
+                              )}
                             </td>
-                            <td>
-                              <select 
-                                className="form-control" 
-                                value={selectedVal}
-                                onChange={(e) => setSimulatedGrades(prev => ({
-                                  ...prev,
-                                  [m.subject]: parseInt(e.target.value)
-                                }))}
-                                style={{ padding: '4px 8px', fontSize: '0.88rem' }}
-                              >
-                                <option value={10}>O (Outstanding - 10)</option>
-                                <option value={9}>A+ (Excellent - 9)</option>
-                                <option value={8}>A (Very Good - 8)</option>
-                                <option value={7}>B+ (Good - 7)</option>
-                                <option value={6}>B (Above Average - 6)</option>
-                                <option value={5}>C (Average - 5)</option>
-                                <option value={4}>P (Pass - 4)</option>
-                                <option value={0}>F (Fail - 0)</option>
-                              </select>
+                            <td style={{ textAlign: 'center' }}>
+                              <input 
+                                type="number" 
+                                className="form-control"
+                                min="0"
+                                max="50"
+                                value={semScoreVal}
+                                onChange={(e) => {
+                                  let val = e.target.value;
+                                  if (val !== '') {
+                                    val = Math.max(0, Math.min(50, parseFloat(val) || 0));
+                                  }
+                                  setSemMarks(prev => ({
+                                    ...prev,
+                                    [m.subject]: val
+                                  }));
+                                }}
+                                style={{ width: '80px', margin: '0 auto', textAlign: 'center', padding: '4px 6px', fontSize: '0.88rem' }}
+                              />
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <span className="badge" style={{ backgroundColor: `${color}15`, color, border: `1px solid ${color}30`, fontWeight: 700, fontSize: '0.82rem', padding: '4px 10px' }} title={label}>
+                                {grade}
+                              </span>
                             </td>
                           </tr>
                         );
@@ -678,36 +892,65 @@ export default function StudentMarks() {
 
                 {/* Past Semesters Input */}
                 <div className="card" style={{ border: '1px solid var(--border)' }}>
-                  <h3 className="mb-8" style={{ fontSize: '0.95rem' }}>Past Semesters Summary</h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <h3 style={{ fontSize: '0.95rem', margin: 0 }}>Past Semesters Summary</h3>
+                    <button 
+                      onClick={handleSavePastSemesters}
+                      className="btn btn-primary btn-sm"
+                      style={{ padding: '2px 8px', fontSize: '0.72rem' }}
+                    >
+                      Save History
+                    </button>
+                  </div>
                   <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 12 }}>
                     Values are synced automatically from your academic records. You can adjust them here to simulate alternative histories.
                   </p>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, maxHeight: 180, overflowY: 'auto', paddingRight: 4 }}>
-                    {customPastSemesters.map((sem, idx) => (
-                      <div key={sem.semester} style={{ padding: 8, background: 'var(--surface-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>Sem {sem.semester} {sem.exists && '📌'}</span>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <input 
-                            type="number" 
-                            placeholder="SGPA"
-                            className="form-control"
-                            step="0.01"
-                            value={sem.sgpa}
-                            onChange={(e) => handlePastSemesterChange(idx, 'sgpa', e.target.value)}
-                            style={{ padding: '2px 4px', fontSize: '0.75rem', flex: 1 }}
-                          />
-                          <input 
-                            type="number" 
-                            placeholder="Creds"
-                            className="form-control"
-                            value={sem.credits}
-                            onChange={(e) => handlePastSemesterChange(idx, 'credits', e.target.value)}
-                            style={{ padding: '2px 4px', fontSize: '0.75rem', flex: 1 }}
-                          />
+                    {customPastSemesters.map((sem, idx) => {
+                      if (sem.semester > currentSemNum) return null;
+                      const isCurrentSem = sem.semester === currentSemNum;
+                      if (isCurrentSem) {
+                        return (
+                          <div key={sem.semester} style={{ padding: 8, background: 'rgba(79, 70, 229, 0.04)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--primary)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)' }}>Sem {sem.semester} (Current ★)</span>
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', height: '22px' }}>
+                              <span style={{ flex: 1, padding: '2px 4px', background: 'var(--surface-1)', borderRadius: 4, textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-primary)', border: '1px solid var(--border)', fontWeight: 'bold' }}>
+                                {calculatedSgpa()}
+                              </span>
+                              <span style={{ flex: 1, padding: '2px 4px', background: 'var(--surface-1)', borderRadius: 4, textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-primary)', border: '1px solid var(--border)', fontWeight: 'bold' }}>
+                                {calculatedSgpaCredits()} Cr
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div key={sem.semester} style={{ padding: 8, background: 'var(--surface-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>Sem {sem.semester} {sem.exists && '📌'}</span>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <input 
+                              type="number" 
+                              placeholder="SGPA"
+                              className="form-control"
+                              step="0.01"
+                              value={sem.sgpa}
+                              onChange={(e) => handlePastSemesterChange(idx, 'sgpa', e.target.value)}
+                              style={{ padding: '2px 4px', fontSize: '0.75rem', flex: 1 }}
+                            />
+                            <input 
+                              type="number" 
+                              placeholder="Creds"
+                              className="form-control"
+                              value={sem.credits}
+                              onChange={(e) => handlePastSemesterChange(idx, 'credits', e.target.value)}
+                              style={{ padding: '2px 4px', fontSize: '0.75rem', flex: 1 }}
+                            />
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 

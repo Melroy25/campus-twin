@@ -21,7 +21,10 @@ export default function MentorStudents() {
 
   // Parent details editor states
   const [editingParentStudent, setEditingParentStudent] = useState(null);
-  const [parentForm, setParentForm] = useState({ name: '', email: '', phone: '' });
+  const [parentForm, setParentForm] = useState({
+    name1: '', email1: '', phone1: '',
+    name2: '', email2: '', phone2: ''
+  });
 
   useEffect(() => {
     if (!currentUser?.uid) return;
@@ -90,26 +93,36 @@ export default function MentorStudents() {
 
   const startEditParent = (s) => {
     setEditingParentStudent(s.id);
+    const names = (s.parent1_name || '').split(';');
+    const emails = (s.parent1_email || '').split(';');
+    const phones = (s.parent1_phone || '').split(';');
     setParentForm({
-      name: s.parent1_name || '',
-      email: s.parent1_email || '',
-      phone: s.parent1_phone || ''
+      name1: names[0] || '',
+      email1: emails[0] || '',
+      phone1: phones[0] || '',
+      name2: names[1] || '',
+      email2: emails[1] || '',
+      phone2: phones[1] || ''
     });
   };
 
   const handleSaveParent = async (studentId) => {
+    const combinedName = [parentForm.name1.trim(), parentForm.name2.trim()].filter(Boolean).join(';');
+    const combinedEmail = [parentForm.email1.trim(), parentForm.email2.trim()].filter(Boolean).join(';');
+    const combinedPhone = [parentForm.phone1.trim(), parentForm.phone2.trim()].filter(Boolean).join(';');
+
     try {
       await updateDocument('students', studentId, {
-        parent1_name: parentForm.name,
-        parent1_email: parentForm.email,
-        parent1_phone: parentForm.phone
+        parent1_name: combinedName,
+        parent1_email: combinedEmail,
+        parent1_phone: combinedPhone
       });
       // Update local state
       setMentees(prev => prev.map(m => m.id === studentId ? {
         ...m,
-        parent1_name: parentForm.name,
-        parent1_email: parentForm.email,
-        parent1_phone: parentForm.phone
+        parent1_name: combinedName,
+        parent1_email: combinedEmail,
+        parent1_phone: combinedPhone
       } : m));
       setEditingParentStudent(null);
       toast.success('Parent details updated!');
@@ -261,90 +274,147 @@ export default function MentorStudents() {
                       </div>
 
                       {/* Parent Details Block */}
-                      <div style={{ gridColumn: 'span 2', borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 6 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                          <h4 style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
-                            👪 Parent Details
-                          </h4>
-                          {editingParentStudent !== s.id && (
-                            <button
-                              onClick={() => startEditParent(s)}
-                              className="btn btn-ghost btn-sm"
-                              style={{ padding: '2px 8px', fontSize: '0.72rem' }}
-                            >
-                              Edit Details
-                            </button>
-                          )}
-                        </div>
+                      {(() => {
+                        const names = (s.parent1_name || '').split(';');
+                        const name1 = names[0] || '';
+                        const name2 = names[1] || '';
+                        const emails = (s.parent1_email || '').split(';');
+                        const email1 = emails[0] || '';
+                        const email2 = emails[1] || '';
+                        const phones = (s.parent1_phone || '').split(';');
+                        const phone1 = phones[0] || '';
+                        const phone2 = phones[1] || '';
 
-                        {editingParentStudent === s.id ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--surface-1)', padding: 12, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                            <div className="grid-3" style={{ gap: 10 }}>
-                              <div>
-                                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Parent Name(s)</label>
-                                <input
-                                  type="text"
-                                  className="form-control form-control-sm"
-                                  value={parentForm.name}
-                                  onChange={(e) => setParentForm(prev => ({ ...prev, name: e.target.value }))}
-                                  placeholder="e.g. John & Mary Doe"
-                                />
-                              </div>
-                              <div>
-                                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Parent Email(s)</label>
-                                <input
-                                  type="email"
-                                  className="form-control form-control-sm"
-                                  value={parentForm.email}
-                                  onChange={(e) => setParentForm(prev => ({ ...prev, email: e.target.value }))}
-                                  placeholder="e.g. parent@example.com"
-                                />
-                              </div>
-                              <div>
-                                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Parent Phone(s)</label>
-                                <input
-                                  type="text"
-                                  className="form-control form-control-sm"
-                                  value={parentForm.phone}
-                                  onChange={(e) => setParentForm(prev => ({ ...prev, phone: e.target.value }))}
-                                  placeholder="e.g. +91 9876543210"
-                                />
-                              </div>
+                        return (
+                          <div style={{ gridColumn: 'span 2', borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 6 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                              <h4 style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+                                👪 Parent Details
+                              </h4>
+                              {editingParentStudent !== s.id && (
+                                <button
+                                  onClick={() => startEditParent(s)}
+                                  className="btn btn-ghost btn-sm"
+                                  style={{ padding: '2px 8px', fontSize: '0.72rem' }}
+                                >
+                                  Edit Details
+                                </button>
+                              )}
                             </div>
-                            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                              <button
-                                onClick={() => setEditingParentStudent(null)}
-                                className="btn btn-outline btn-sm"
-                                style={{ padding: '4px 10px', fontSize: '0.75rem' }}
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                onClick={() => handleSaveParent(s.id)}
-                                className="btn btn-primary btn-sm"
-                                style={{ padding: '4px 10px', fontSize: '0.75rem' }}
-                              >
-                                Save Details
-                              </button>
-                            </div>
+
+                            {editingParentStudent === s.id ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--surface-1)', padding: 12, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                                <div className="grid-2" style={{ gap: 16 }}>
+                                  {/* Parent 1 Details */}
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    <div style={{ fontWeight: 600, fontSize: '0.78rem', color: 'var(--primary)', borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>Parent 1 (Primary)</div>
+                                    <div>
+                                      <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Parent Name</label>
+                                      <input
+                                        type="text"
+                                        className="form-control form-control-sm"
+                                        value={parentForm.name1}
+                                        onChange={(e) => setParentForm(prev => ({ ...prev, name1: e.target.value }))}
+                                        placeholder="e.g. John Doe"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Parent Email</label>
+                                      <input
+                                        type="email"
+                                        className="form-control form-control-sm"
+                                        value={parentForm.email1}
+                                        onChange={(e) => setParentForm(prev => ({ ...prev, email1: e.target.value }))}
+                                        placeholder="e.g. parent1@example.com"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Parent Phone</label>
+                                      <input
+                                        type="text"
+                                        className="form-control form-control-sm"
+                                        value={parentForm.phone1}
+                                        onChange={(e) => setParentForm(prev => ({ ...prev, phone1: e.target.value }))}
+                                        placeholder="e.g. +91 9876543210"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {/* Parent 2 Details */}
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    <div style={{ fontWeight: 600, fontSize: '0.78rem', color: 'var(--primary)', borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>Parent 2 (Secondary)</div>
+                                    <div>
+                                      <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Parent Name</label>
+                                      <input
+                                        type="text"
+                                        className="form-control form-control-sm"
+                                        value={parentForm.name2}
+                                        onChange={(e) => setParentForm(prev => ({ ...prev, name2: e.target.value }))}
+                                        placeholder="e.g. Mary Doe"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Parent Email</label>
+                                      <input
+                                        type="email"
+                                        className="form-control form-control-sm"
+                                        value={parentForm.email2}
+                                        onChange={(e) => setParentForm(prev => ({ ...prev, email2: e.target.value }))}
+                                        placeholder="e.g. parent2@example.com"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Parent Phone</label>
+                                      <input
+                                        type="text"
+                                        className="form-control form-control-sm"
+                                        value={parentForm.phone2}
+                                        onChange={(e) => setParentForm(prev => ({ ...prev, phone2: e.target.value }))}
+                                        placeholder="e.g. +91 9876543211"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+                                  <button
+                                    onClick={() => setEditingParentStudent(null)}
+                                    className="btn btn-outline btn-sm"
+                                    style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={() => handleSaveParent(s.id)}
+                                    className="btn btn-primary btn-sm"
+                                    style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                  >
+                                    Save Details
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="grid-2" style={{ gap: 16 }}>
+                                <div style={{ background: 'var(--surface-1)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                                  <div style={{ fontWeight: 600, fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 8, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>Parent 1 Details</div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                    <div style={{ fontSize: '0.82rem' }}><span style={{ color: 'var(--text-muted)' }}>Name:</span> <strong>{name1 || '—'}</strong></div>
+                                    <div style={{ fontSize: '0.82rem' }}><span style={{ color: 'var(--text-muted)' }}>Email:</span> <strong>{email1 || '—'}</strong></div>
+                                    <div style={{ fontSize: '0.82rem' }}><span style={{ color: 'var(--text-muted)' }}>Phone:</span> <strong>{phone1 || '—'}</strong></div>
+                                  </div>
+                                </div>
+                                <div style={{ background: 'var(--surface-1)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                                  <div style={{ fontWeight: 600, fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 8, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>Parent 2 Details</div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                    <div style={{ fontSize: '0.82rem' }}><span style={{ color: 'var(--text-muted)' }}>Name:</span> <strong>{name2 || '—'}</strong></div>
+                                    <div style={{ fontSize: '0.82rem' }}><span style={{ color: 'var(--text-muted)' }}>Email:</span> <strong>{email2 || '—'}</strong></div>
+                                    <div style={{ fontSize: '0.82rem' }}><span style={{ color: 'var(--text-muted)' }}>Phone:</span> <strong>{phone2 || '—'}</strong></div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        ) : (
-                          <div className="grid-3" style={{ gap: 12, background: 'var(--surface-1)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                            <div>
-                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block' }}>Name(s)</span>
-                              <strong style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>{s.parent1_name || '—'}</strong>
-                            </div>
-                            <div>
-                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block' }}>Email(s)</span>
-                              <strong style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>{s.parent1_email || '—'}</strong>
-                            </div>
-                            <div>
-                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block' }}>Phone Number(s)</span>
-                              <strong style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>{s.parent1_phone || '—'}</strong>
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 )}
